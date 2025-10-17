@@ -1,0 +1,31 @@
+{
+  "dataset_config": "configs/dataset.json",
+  "training_config": "configs/training.json",
+  "dataloader": {
+    "batch_size": 16,
+    "num_workers": 4,
+    "pin_memory": true
+  },
+  "optimizer": {
+    "name": "adamw",
+    "lr": 0.0003,
+    "weight_decay": 0.01
+  },
+  "loss": {
+    "name": "mse"
+  },
+  "history_output": "experiments/training_history.json"
+}
+    "num_workers": 4,
+    "pin_memory": true
+  },
+  "optimizer": {
+    "name": "adamw",
+    "lr": 0.0003,
+    "weight_decay": 0.01
+  },
+  "loss": {
+    "name": "mse"
+  },
+  "history_output": "experiments/training_history.json"
+}

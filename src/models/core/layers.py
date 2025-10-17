@@ -1,3 +1,5 @@
+"""Core neural network layers powering the foundation transformer."""
+
 from __future__ import annotations
 
 import math
@@ -8,6 +10,8 @@ from torch import Tensor, nn
 
 
 class MLPBlock(nn.Module):
+    """Two-layer feed-forward block with configurable activation and dropout."""
+
     def __init__(
         self,
         input_dim: int,
@@ -23,7 +27,9 @@ class MLPBlock(nn.Module):
         out_dim = output_dim or input_dim
         self.fc2 = nn.Linear(hidden_dim, out_dim)
 
+    # Apply the MLP block to the input tensor.
     def forward(self, x: Tensor) -> Tensor:
+        """Apply the MLP block to the input tensor."""
         x = self.fc1(x)
         x = self.activation(x)
         x = self.dropout(x)
@@ -32,21 +38,29 @@ class MLPBlock(nn.Module):
 
 
 class ResidualBlock(nn.Module):
+    """Generic residual wrapper applying dropout to the module output."""
+
     def __init__(self, module: nn.Module, dropout: float = 0.0) -> None:
         super().__init__()
         self.module = module
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
+    # Add module output back to the original input.
     def forward(self, x: Tensor, *args, **kwargs) -> Tensor:
+        """Add module output back to the original input."""
         return x + self.dropout(self.module(x, *args, **kwargs))
 
 
 class ScaledDotProductAttention(nn.Module):
+    """Scaled dot-product attention with optional dropout."""
+
     def __init__(self, dropout: float = 0.0) -> None:
         super().__init__()
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
+    # Compute attention outputs given query, key, value, and mask.
     def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+        """Compute attention outputs given query, key, value, and mask."""
         d_k = q.size(-1)
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
@@ -58,6 +72,8 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class MultiHeadSelfAttention(nn.Module):
+    """Multi-head self-attention projecting inputs to multiple heads."""
+
     def __init__(
         self,
         embed_dim: int,
@@ -79,7 +95,9 @@ class MultiHeadSelfAttention(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
+    # Reshape projected tensor into multi-head representation.
     def _reshape(self, x: Tensor) -> Tensor:
+        """Reshape projected tensor into multi-head representation."""
         bsz, seq_len, _ = x.shape
         return (
             x.view(bsz, seq_len, self.num_heads, self.head_dim)
@@ -88,7 +106,9 @@ class MultiHeadSelfAttention(nn.Module):
             .view(bsz * self.num_heads, seq_len, self.head_dim)
         )
 
+    # Merge multi-head outputs back into the embedding dimension.
     def _combine(self, x: Tensor, batch_size: int) -> Tensor:
+        """Merge multi-head outputs back into the embedding dimension."""
         seq_len = x.size(1)
         return (
             x.view(batch_size, self.num_heads, seq_len, self.head_dim)
@@ -97,7 +117,9 @@ class MultiHeadSelfAttention(nn.Module):
             .view(batch_size, seq_len, self.embed_dim)
         )
 
+    # Apply multi-head self-attention to the input sequence.
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+        """Apply multi-head self-attention to the input sequence."""
         batch_size = x.size(0)
 
         q = self._reshape(self.q_proj(x))
@@ -127,6 +149,8 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class TransformerEncoderLayer(nn.Module):
+    """Transformer encoder layer with pre/post-norm options."""
+
     def __init__(
         self,
         embed_dim: int,
@@ -158,7 +182,9 @@ class TransformerEncoderLayer(nn.Module):
         )
         self.mlp_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
+    # Run self-attention followed by feed-forward transformation.
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+        """Run self-attention followed by feed-forward transformation."""
         if self.norm_first:
             x = x + self.attn_dropout(self.self_attn(self.norm1(x), mask=mask))
             x = x + self.mlp_dropout(self.mlp(self.norm2(x)))

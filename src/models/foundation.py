@@ -1,3 +1,5 @@
+"""Foundation transformer model tailored for Neuscenes scene embeddings."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ from .core import PositionalEncoding, TransformerEncoderLayer
 
 @dataclass
 class FoundationModelConfig:
+    """Configuration namespace for the Neuscenes foundation transformer."""
+
     input_dim: int
     embed_dim: int = 256
     depth: int = 6
@@ -24,6 +28,7 @@ class FoundationModelConfig:
     pooling: str = "cls"
 
     def __post_init__(self) -> None:
+        """Validate configuration values after dataclass initialisation."""
         if self.pooling not in {"cls", "mean"}:
             raise ValueError("pooling must be either 'cls' or 'mean'.")
         if self.embed_dim % self.num_heads != 0:
@@ -33,6 +38,8 @@ class FoundationModelConfig:
 
 
 class NeuscenesFoundationModel(nn.Module):
+    """Transformer-based backbone producing scene-level representations."""
+
     def __init__(self, config: FoundationModelConfig) -> None:
         super().__init__()
         self.config = config
@@ -70,6 +77,7 @@ class NeuscenesFoundationModel(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, module: nn.Module) -> None:
+        """Initialise module weights following transformer conventions."""
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std=0.02)
             if module.bias is not None:
@@ -79,6 +87,15 @@ class NeuscenesFoundationModel(nn.Module):
             nn.init.zeros_(module.bias)
 
     def forward_features(self, inputs: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+        """Produce pooled scene features prior to the prediction head.
+
+        Args:
+            inputs: Tensor of sensor features shaped (batch, seq, input_dim).
+            mask: Optional attention mask indicating valid tokens.
+
+        Returns:
+            Tensor of pooled latent representations.
+        """
         x = self.input_proj(inputs)
         batch_size = x.size(0)
 
@@ -111,5 +128,14 @@ class NeuscenesFoundationModel(nn.Module):
         return tokens.mean(dim=1)
 
     def forward(self, inputs: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+        """Run the full model and return head outputs.
+
+        Args:
+            inputs: Tensor of sensor features shaped (batch, seq, input_dim).
+            mask: Optional attention mask indicating valid tokens.
+
+        Returns:
+            Prediction tensor shaped (batch, num_outputs).
+        """
         features = self.forward_features(inputs, mask)
         return self.head(features)

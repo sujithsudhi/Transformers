@@ -4,6 +4,7 @@ from .training import (
     Trainer,
     evaluate,
     fit,
+    load_training_config,
     train_one_epoch,
 )
 
@@ -13,4 +14,5 @@ __all__ = [
     "train_one_epoch",
     "evaluate",
     "fit",
+    "load_training_config",
 ]

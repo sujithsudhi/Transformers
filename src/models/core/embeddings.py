@@ -1,3 +1,5 @@
+"""Embedding modules used by the foundation transformer."""
+
 from __future__ import annotations
 
 import math
@@ -8,6 +10,8 @@ from torch import Tensor, nn
 
 
 class TokenEmbedding(nn.Module):
+    """Lookup embedding layer with optional padding index."""
+
     def __init__(self, vocab_size: int, embed_dim: int, padding_idx: Optional[int] = None) -> None:
         super().__init__()
         self.embedding = nn.Embedding(
@@ -16,11 +20,15 @@ class TokenEmbedding(nn.Module):
             padding_idx=padding_idx,
         )
 
+    # Embed integer token IDs into dense vectors.
     def forward(self, tokens: Tensor) -> Tensor:
+        """Embed integer token IDs into dense vectors."""
         return self.embedding(tokens)
 
 
 class PositionalEncoding(nn.Module):
+    """Sinusoidal positional encoding with optional dropout."""
+
     def __init__(self, embed_dim: int, max_len: int = 10000, dropout: float = 0.0) -> None:
         super().__init__()
         position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
@@ -31,7 +39,22 @@ class PositionalEncoding(nn.Module):
         self.register_buffer("positional_table", pe.unsqueeze(0), persistent=False)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
+    # Add positional encodings to the input sequence.
+    # Args:
+    #   x: Input tensor shaped (batch, seq_len, embed_dim).
+    #   offset: Starting position offset for masking or chunking.
+    # Returns:
+    #   Tensor with positional encodings applied.
     def forward(self, x: Tensor, offset: int = 0) -> Tensor:
+        """Add positional encodings to the input sequence.
+
+        Args:
+            x: Input tensor shaped (batch, seq_len, embed_dim).
+            offset: Starting position offset for masking or chunking.
+
+        Returns:
+            Tensor with positional encodings applied.
+        """
         length = x.size(1)
         positional = self.positional_table[:, offset : offset + length]
         return self.dropout(x + positional)
