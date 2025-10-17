@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -18,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.core import Trainer, evaluate, load_training_config
-from src.datasets import load_neuscenes_config, load_neuscenes_metadata, split_neuscenes
+from src.datasets import load_neuscenes_metadata, split_neuscenes
 from src.datasets.neuscenes import NeuscenesMetadata, SceneStats
 from src.models import FoundationModelConfig, NeuscenesFoundationModel
 
@@ -73,21 +74,21 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the Neuscenes foundation model.")
     parser.add_argument(
         "--config",
-        type=Path,
-        default=PROJECT_ROOT / "configs" / "app.json",
-        help="Application configuration JSON.",
+        type=str,
+        default="configs.config:AppConfig",
+        help="Python path to the application config class (e.g. 'configs.config:AppConfig').",
     )
     parser.add_argument(
         "--dataset-config",
-        type=Path,
+        type=str,
         default=None,
-        help="Optional override for dataset config.",
+        help="Optional Python path overriding the dataset config class.",
     )
     parser.add_argument(
         "--training-config",
-        type=Path,
+        type=str,
         default=None,
-        help="Optional override for training config.",
+        help="Optional Python path overriding the training config class.",
     )
     parser.add_argument(
         "--history-out",
@@ -98,43 +99,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-"""Load a JSON configuration file.
-
-Args:
-    path: Location of the JSON config.
-
-Returns:
-    Parsed configuration dictionary.
-"""
-def load_json_config(path: Path) -> Dict[str, Any]:
-    resolved = path.expanduser().resolve()
-    with resolved.open("r", encoding="utf-8") as handle:
-        raw = handle.read()
-    cleaned = "\n".join(line for line in raw.splitlines() if not line.strip().startswith("//"))
-    return json.loads(cleaned)
-
-
-"""Wrapper loading the application-level configuration."""
-def load_app_config(path: Path) -> Dict[str, Any]:
-    return load_json_config(path)
+"""Import and instantiate a configuration class referenced by string."""
+def load_config_target(target: str) -> Any:
+    """Import and instantiate a configuration class referenced by string."""
+    if not target:
+        raise ValueError("Configuration target string cannot be empty.")
+    if ":" in target:
+        module_name, attr_name = target.split(":", 1)
+    else:
+        module_name, attr_name = target.rsplit(".", 1)
+    module = import_module(module_name)
+    attr = getattr(module, attr_name)
+    if isinstance(attr, type):
+        return attr()
+    return attr
 
 
-"""Resolve relative paths against a base configuration file.
-
-Args:
-    base_config: Absolute path of the base config.
-    candidate: Path string or Path object to resolve.
-
-Returns:
-    Absolute path or None if no candidate supplied.
-"""
-def resolve_path(base_config: Path, candidate: Optional[Path | str]) -> Optional[Path]:
-    if candidate is None:
-        return None
-    path = Path(candidate)
-    if not path.is_absolute():
-        path = (base_config.parent / path).resolve()
-    return path
+def describe_config(obj: Any) -> str:
+    """Return a stable identifier for a configuration object."""
+    cls = obj.__class__
+    return f"{cls.__module__}:{cls.__name__}"
 
 
 """Derive a stable sensor index from dataset metadata.
@@ -258,37 +242,79 @@ def maybe_save_history(history: List[Dict[str, Any]], path: Optional[Path]) -> N
 def main() -> None:
     """Entry point coordinating configuration loading and training."""
     args = parse_args()
-    app_config_path = args.config.expanduser().resolve()
-    app_config = load_app_config(app_config_path)
+    app_config = load_config_target(args.config)
 
-    dataset_config_path = resolve_path(
-        app_config_path, args.dataset_config or app_config.get("dataset_config")
+    dataset_settings = (
+        load_config_target(args.dataset_config) if args.dataset_config else app_config.dataset
     )
-    training_config_path = resolve_path(
-        app_config_path, args.training_config or app_config.get("training_config")
+    training_settings = (
+        load_config_target(args.training_config) if args.training_config else app_config.training
     )
-    if dataset_config_path is None or training_config_path is None:
-        raise ValueError("Both dataset_config and training_config must be provided.")
 
-    os.environ["FOUNDATION_APP_CONFIG"] = str(app_config_path)
-    os.environ["FOUNDATION_DATASET_CONFIG"] = str(dataset_config_path)
-    os.environ["FOUNDATION_TRAINING_CONFIG"] = str(training_config_path)
+    def to_dataset_config(obj: Any):
+        if hasattr(obj, "to_dataset_config"):
+            return obj.to_dataset_config()
+        from src.datasets.neuscenes import DatasetConfig as NeuscenesDatasetConfig
 
-    dataset_config = load_neuscenes_config(dataset_config_path)
-    training_config = load_training_config(training_config_path)
+        if isinstance(obj, NeuscenesDatasetConfig):
+            return obj
+        if isinstance(obj, dict):
+            splits_raw = {k: float(v) for k, v in obj["splits"].items()}
+            total = sum(splits_raw.values())
+            if total <= 0:
+                raise ValueError("At least one positive dataset split ratio is required.")
+            normalized = {name: value / total for name, value in splits_raw.items()}
+            return NeuscenesDatasetConfig(
+                dataset_root=Path(obj["dataset_root"]).expanduser().resolve(),
+                splits=normalized,
+                shuffle=bool(obj.get("shuffle", True)),
+                seed=int(obj.get("seed", 42)),
+            )
+        raise TypeError(
+            "Unsupported dataset configuration type; expected object with to_dataset_config()."
+        )
+
+    def to_dict(obj: Any) -> Dict[str, Any]:
+        if hasattr(obj, "as_dict"):
+            return obj.as_dict()
+        if isinstance(obj, dict):
+            return dict(obj)
+        from dataclasses import asdict, is_dataclass
+
+        if is_dataclass(obj):
+            return asdict(obj)
+        raise TypeError("Configuration objects must expose as_dict() or be dicts.")
+
+    def to_training_payload(obj: Any) -> Dict[str, Any]:
+        if hasattr(obj, "as_dict"):
+            return obj.as_dict()
+        if isinstance(obj, dict):
+            return dict(obj)
+        from dataclasses import asdict, is_dataclass
+
+        if is_dataclass(obj):
+            return asdict(obj)
+        raise TypeError("Unsupported training configuration type; provide as_dict() or mapping.")
+
+    dataset_config = to_dataset_config(dataset_settings)
+    training_payload = to_training_payload(training_settings)
+
+    training_config = load_training_config(training_payload)
+
     metadata = load_neuscenes_metadata(dataset_config.dataset_root)
     splits = split_neuscenes(metadata, dataset_config)
     sensor_index = build_sensor_index(metadata)
-    dataloader_cfg = app_config.get("dataloader", {})
+
+    dataloader_cfg = to_dict(app_config.dataloader)
     train_loader, val_loader, test_loader = build_dataloaders(
         splits,
         sensor_index,
         dataloader_cfg,
     )
-    training_payload = load_json_config(training_config_path)
+
     model_cfg = dict(training_payload.get("model", {}))
     if not model_cfg:
-        raise ValueError("Model configuration missing from training config.")
+        raise ValueError("Model configuration missing from training settings.")
     if "input_dim" not in model_cfg:
         raise ValueError("Model configuration must include 'input_dim'.")
     if model_cfg["input_dim"] != NeuscenesSceneDataset.FEATURE_DIM:
@@ -299,8 +325,8 @@ def main() -> None:
     model_config = FoundationModelConfig(**model_cfg)
     model = NeuscenesFoundationModel(model_config)
 
-    optimizer = build_optimizer(model, app_config.get("optimizer", {}))
-    loss_fn = build_loss(app_config.get("loss", {}))
+    optimizer = build_optimizer(model, to_dict(app_config.optimizer))
+    loss_fn = build_loss(to_dict(app_config.loss))
 
     trainer = Trainer(
         model=model,
@@ -320,12 +346,20 @@ def main() -> None:
             loss_fn,
             training_config.device,
             training_config.non_blocking,
+            progress_desc="Test",
         )
 
-    history_path = args.history_out or resolve_path(
-        app_config_path, app_config.get("history_output")
-    )
+    history_target = args.history_out or getattr(app_config, "history_output", None)
+    history_path = Path(history_target) if history_target is not None else None
     maybe_save_history(history, history_path)
+
+    os.environ["FOUNDATION_APP_CONFIG"] = describe_config(app_config)
+    os.environ["FOUNDATION_DATASET_CONFIG"] = (
+        args.dataset_config or describe_config(dataset_settings)
+    )
+    os.environ["FOUNDATION_TRAINING_CONFIG"] = (
+        args.training_config or describe_config(training_settings)
+    )
 
     payload: Dict[str, Any] = {"train_history": history}
     if test_metrics is not None:

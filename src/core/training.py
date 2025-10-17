@@ -13,6 +13,11 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau
 
+try:
+    from tqdm.auto import tqdm  # type: ignore
+except ImportError:  # pragma: no cover - tqdm is an optional runtime dependency
+    tqdm = None  # type: ignore
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _TRAINING_CONFIG_PATH = _PROJECT_ROOT / "configs" / "training.json"
@@ -252,28 +257,35 @@ class TrainingConfig:
         self.non_blocking = _resolve_bool(self.non_blocking, True)
 
 
-"""Load a training configuration file and construct TrainingConfig.
+"""Load a training configuration source and construct TrainingConfig.
 
 Args:
-    path: Optional path to a training JSON configuration.
+    source: Optional JSON path, mapping, or TrainingConfig.
 
 Returns:
     Fully-populated TrainingConfig instance.
 """
-def load_training_config(path: Path | str | None = None) -> TrainingConfig:
-    """Load a training configuration file and construct TrainingConfig.
+def load_training_config(
+    source: Path | str | Mapping[str, Any] | TrainingConfig | None = None,
+) -> TrainingConfig:
+    """Load a training configuration source and construct TrainingConfig.
 
     Args:
-        path: Optional path to a training JSON configuration.
+        source: Optional JSON path, mapping, or TrainingConfig.
 
     Returns:
         Fully-populated TrainingConfig instance.
     """
-    resolved = Path(path).expanduser().resolve() if path else _TRAINING_CONFIG_PATH
-    if not resolved.exists():
-        raise FileNotFoundError(f"Training config not found: {resolved}")
-    with resolved.open("r", encoding="utf-8") as handle:
-        payload = json.load(handle)
+    if isinstance(source, TrainingConfig):
+        return source
+    if isinstance(source, Mapping):
+        payload = dict(source)
+    else:
+        resolved = Path(source).expanduser().resolve() if source else _TRAINING_CONFIG_PATH
+        if not resolved.exists():
+            raise FileNotFoundError(f"Training config not found: {resolved}")
+        with resolved.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
     combined = dict(_TRAINING_DEFAULTS)
     combined.update(payload)
     valid_keys = {
@@ -386,6 +398,26 @@ def _count_batch_items(batch: Any) -> int:
     return 0
 
 
+def _try_len(iterable: Iterable[Any]) -> Optional[int]:
+    """Return len(iterable) when available, otherwise None."""
+    try:
+        return len(iterable)  # type: ignore[arg-type]
+    except (TypeError, AttributeError):
+        return None
+
+
+def _progress_iter(
+    iterable: Iterable[Any],
+    desc: str,
+) -> tuple[Iterable[Any], Optional[Any]]:
+    """Wrap an iterable with a tqdm progress bar when available."""
+    if tqdm is None:
+        return iterable, None
+    total = _try_len(iterable)
+    bar = tqdm(iterable, desc=desc, total=total, leave=False)
+    return bar, bar
+
+
 """Execute a single training epoch with optional gradient scaling.
 
 Args:
@@ -404,7 +436,8 @@ def train_one_epoch(model: nn.Module,
                     optimizer: Optimizer,
                     loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
                     config: TrainingConfig,
-                    scaler: Optional[GradScaler] = None,) -> Dict[str, float]:
+                    scaler: Optional[GradScaler] = None,
+                    progress_desc: Optional[str] = None,) -> Dict[str, float]:
     """Execute a single training epoch with optional gradient scaling.
 
     Args:
@@ -414,6 +447,7 @@ def train_one_epoch(model: nn.Module,
         loss_fn: Loss function applied to model outputs.
         config: Training configuration.
         scaler: Optional gradient scaler for AMP.
+        progress_desc: Optional label shown on the progress bar.
 
     Returns:
         Dictionary of aggregated training metrics.
@@ -429,37 +463,44 @@ def train_one_epoch(model: nn.Module,
     total_examples = 0
     total_steps = 0
 
-    for step, raw_batch in enumerate(dataloader, start=1):
-        batch = _move_to_device(raw_batch, device, config.non_blocking)
-        inputs, targets = _split_batch(batch)
-        with autocast(enabled=scaler.is_enabled()):
-            outputs = model(inputs)
-            loss = loss_fn(outputs, targets)
-            loss_to_backward = loss / accum_steps
-
-        if scaler.is_enabled():
-            scaler.scale(loss_to_backward).backward()
-        else:
-            loss_to_backward.backward()
-
-        should_step = step % accum_steps == 0
-        if should_step:
-            if config.gradient_clip_norm is not None:
-                if scaler.is_enabled():
-                    scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_norm)
+    iterator, progress_bar = _progress_iter(dataloader, progress_desc or "Train")
+    try:
+        for step, raw_batch in enumerate(iterator, start=1):
+            batch = _move_to_device(raw_batch, device, config.non_blocking)
+            inputs, targets = _split_batch(batch)
+            with autocast(enabled=scaler.is_enabled()):
+                outputs = model(inputs)
+                loss = loss_fn(outputs, targets)
+                loss_to_backward = loss / accum_steps
 
             if scaler.is_enabled():
-                scaler.step(optimizer)
-                scaler.update()
+                scaler.scale(loss_to_backward).backward()
             else:
-                optimizer.step()
+                loss_to_backward.backward()
 
-            optimizer.zero_grad(set_to_none=True)
+            should_step = step % accum_steps == 0
+            if should_step:
+                if config.gradient_clip_norm is not None:
+                    if scaler.is_enabled():
+                        scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_norm)
 
-        total_loss += loss.item()
-        total_examples += _count_batch_items(raw_batch)
-        total_steps += 1
+                if scaler.is_enabled():
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+
+                optimizer.zero_grad(set_to_none=True)
+
+            total_loss += loss.item()
+            total_examples += _count_batch_items(raw_batch)
+            total_steps += 1
+            if progress_bar is not None:
+                progress_bar.set_postfix({"loss": f"{loss.item():.4f}"}, refresh=False)
+    finally:
+        if progress_bar is not None:
+            progress_bar.close()
 
     if total_steps % accum_steps != 0:
         if config.gradient_clip_norm is not None:
@@ -498,6 +539,7 @@ def evaluate(model: nn.Module,
             loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
             device: str | torch.device,
             non_blocking: bool = True,
+            progress_desc: Optional[str] = None,
         ) -> Dict[str, float]:
     """Evaluate a model on the provided dataloader without gradient tracking.
 
@@ -519,16 +561,23 @@ def evaluate(model: nn.Module,
     total_examples = 0
     total_steps = 0
 
+    iterator, progress_bar = _progress_iter(dataloader, progress_desc or "Eval")
     with torch.no_grad():
-        for raw_batch in dataloader:
-            batch = _move_to_device(raw_batch, device, non_blocking)
-            inputs, targets = _split_batch(batch)
-            outputs = model(inputs)
-            loss = loss_fn(outputs, targets)
+        try:
+            for raw_batch in iterator:
+                batch = _move_to_device(raw_batch, device, non_blocking)
+                inputs, targets = _split_batch(batch)
+                outputs = model(inputs)
+                loss = loss_fn(outputs, targets)
 
-            total_loss += loss.item()
-            total_examples += _count_batch_items(raw_batch)
-            total_steps += 1
+                total_loss += loss.item()
+                total_examples += _count_batch_items(raw_batch)
+                total_steps += 1
+                if progress_bar is not None:
+                    progress_bar.set_postfix({"loss": f"{loss.item():.4f}"}, refresh=False)
+        finally:
+            if progress_bar is not None:
+                progress_bar.close()
 
     return {
         "loss": total_loss / max(total_steps, 1),
@@ -577,6 +626,7 @@ class Trainer:
                                             self.loss_fn,
                                             self.config,
                                             scaler=self.scaler,
+                                            progress_desc=f"Epoch {epoch} [train]",
             )
 
             val_metrics = None
@@ -586,6 +636,7 @@ class Trainer:
                                        self.loss_fn,
                                        self.config.device,
                                        self.config.non_blocking,
+                                       progress_desc=f"Epoch {epoch} [val]",
                 )
 
             self._step_scheduler(val_metrics)
