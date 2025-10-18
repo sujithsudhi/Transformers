@@ -148,14 +148,13 @@ def load_training_config(
         with resolved.open("r", encoding="utf-8") as handle:
             payload = dict(_TRAINING_DEFAULTS)
             payload.update(json.load(handle))
-    valid_keys = {
-        "epochs",
-        "device",
-        "gradient_clip_norm",
-        "gradient_accumulation_steps",
-        "use_amp",
-        "log_interval",
-        "non_blocking",
+    valid_keys = {"epochs",
+                 "device",
+                 "gradient_clip_norm",
+                 "gradient_accumulation_steps",
+                 "use_amp",
+                 "log_interval",
+                 "non_blocking",
     }
     kwargs = {key: payload.get(key) for key in valid_keys}
     return TrainingConfig(**kwargs)
@@ -213,15 +212,15 @@ def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], O
     return bar, bar
 
 
-def train_one_epoch(
-    model: nn.Module,
-    dataloader: Iterable[Any],
-    optimizer: Optimizer,
-    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-    config: TrainingConfig,
-    scaler: Optional[GradScaler] = None,
-    progress_desc: Optional[str] = None,
-) -> Dict[str, float]:
+def train_one_epoch(model        : nn.Module,
+                    dataloader   : Iterable[Any],
+                    optimizer    : Optimizer,
+                    loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+                    config       : TrainingConfig,
+                    scaler       : Optional[GradScaler] = None,
+                    progress_desc: Optional[str] = None,
+                   ) -> Dict[str, float]:
+    
     device = torch.device(config.device)
     model.to(device)
     model.train()
@@ -356,16 +355,17 @@ class Trainer:
         self.history: list[Dict[str, Any]] = []
 
     def fit(self) -> list[Dict[str, Any]]:
+
         for epoch in range(1, self.config.epochs + 1):
-            train_metrics = train_one_epoch(
-                self.model,
-                self.train_loader,
-                self.optimizer,
-                self.loss_fn,
-                self.config,
-                scaler=self.scaler,
-                progress_desc=f"Epoch {epoch} [train]",
-            )
+            iterator, _ = _progress_iter(self.train_loader, f"Epoch {epoch}")
+            train_metrics = train_one_epoch(self.model,
+                                            self.train_loader,
+                                            self.optimizer,
+                                            self.loss_fn,
+                                            self.config,
+                                            scaler=self.scaler,
+                                            progress_desc=f"[train]",
+                                          )
 
             val_metrics = None
             if self.val_loader is not None:

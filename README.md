@@ -27,17 +27,9 @@ pip install -r requirements.txt
 ## Training
 
 ```bash
-python train_sentiment.py --config configs.imdb:IMDBConfig
+python train_sentiment.py
 ```
 
-Override any parameter directly:
+The script loads `configs.imdb:IMDBConfig` by default. To change hyperparameters, edit or subclass the dataclasses in `configs/` (see `configs/base.py` for shared defaults) and update the configuration target inside `train_sentiment.py`.
 
-```bash
-python train_sentiment.py \
-  --config configs.imdb:IMDBConfig \
-  --epochs 3 \
-  --batch-size 16 \
-  --history-out results/custom_history.json
-```
-
-The IMDB config inherits shared defaults defined in `configs/base.py`. For new applications, create a module (see `configs/foundation.py`) that subclasses the base dataclasses, point `train_sentiment.py` at it via `--config`, and adjust dataset/model hyperparameters as needed. Loss curves and metrics default to the paths declared on the config (`history_path`, `plot_path`).
+Loss curves and metrics are saved to the paths declared on the active config (`history_path`, `plot_path`). Legacy Neuscenes scripts (`scripts/` and `src/`) have been retired so the repository focuses solely on the IMDB sentiment workflow.

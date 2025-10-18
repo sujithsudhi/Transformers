@@ -75,15 +75,15 @@ class ScaledDotProductAttention(nn.Module):
         super().__init__()
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    # Function: forward
-    # Description: Compute scaled-dot attention given query, key, value, and masks.
-    # Args:
-    #   q: Query tensor.
-    #   k: Key tensor.
-    #   v: Value tensor.
-    #   mask: Optional mask restricting attention weights.
-    # Returns:
-    #   Tensor resulting from attention-weighted values.
+    ''' Function: forward
+        Description: Compute scaled-dot attention given query, key, value, and masks.
+        Args:
+            q: Query tensor.
+            k: Key tensor.
+            v: Value tensor.
+            mask: Optional mask restricting attention weights.
+        Returns:
+         Tensor resulting from attention-weighted values. '''
     def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         d_k = q.size(-1)
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
@@ -103,48 +103,47 @@ class MultiHeadSelfAttention(nn.Module):
     #   num_heads: Number of attention heads.
     #   dropout: Dropout applied to attention and output projection.
     #   bias: Whether linear projections use biases.
-    def __init__(
-        self,
-        embed_dim: int,
-        num_heads: int,
-        dropout: float = 0.0,
-        bias: bool = True,
-    ) -> None:
+    
+    def __init__(self,
+                 embed_dim: int,
+                 num_heads: int,
+                 dropout: float = 0.0,
+                 bias: bool = True,
+                ) -> None:
         super().__init__()
         if embed_dim % num_heads != 0:
             raise ValueError("embed_dim must be divisible by num_heads.")
+        
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
+        self.head_dim  = embed_dim // num_heads
 
-        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.q_proj    = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.k_proj    = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.v_proj    = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.attention = ScaledDotProductAttention(dropout=dropout)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.out_proj  = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.dropout   = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
     # Function: _reshape
     # Description: Reshape for multi-head representation.
     def _reshape(self, x: Tensor) -> Tensor:
         bsz, seq_len, _ = x.shape
-        return (
-            x.view(bsz, seq_len, self.num_heads, self.head_dim)
-            .transpose(1, 2)
-            .contiguous()
-            .view(bsz * self.num_heads, seq_len, self.head_dim)
-        )
+        return (x.view(bsz, seq_len, self.num_heads, self.head_dim)
+               .transpose(1, 2)
+               .contiguous()
+               .view(bsz * self.num_heads, seq_len, self.head_dim)
+            )
 
     # Function: _combine
     # Description: Merge head outputs back into embedding space.
     def _combine(self, x: Tensor, batch_size: int) -> Tensor:
         seq_len = x.size(1)
-        return (
-            x.view(batch_size, self.num_heads, seq_len, self.head_dim)
-            .transpose(1, 2)
-            .contiguous()
-            .view(batch_size, seq_len, self.embed_dim)
-        )
+        return (x.view(batch_size, self.num_heads, seq_len, self.head_dim)
+               .transpose(1, 2)
+               .contiguous()
+               .view(batch_size, seq_len, self.embed_dim)
+               )
 
     # Function: forward
     # Description: Apply multi-head self-attention to the sequence.
