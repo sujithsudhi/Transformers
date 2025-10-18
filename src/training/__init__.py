@@ -1,3 +1,0 @@
-"""
-Training and evaluation routines.
-"""

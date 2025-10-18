@@ -1,5 +1,3 @@
-"""Embedding modules used by the foundation transformer."""
-
 from __future__ import annotations
 
 import math
@@ -10,8 +8,12 @@ from torch import Tensor, nn
 
 
 class TokenEmbedding(nn.Module):
-    """Lookup embedding layer with optional padding index."""
-
+    # Function: __init__
+    # Description: Set up embedding lookup with optional padding suppression.
+    # Args:
+    #   vocab_size: Number of tokens in the vocabulary.
+    #   embed_dim: Dimension of embedding vectors.
+    #   padding_idx: Optional index treated as padding.
     def __init__(self, vocab_size: int, embed_dim: int, padding_idx: Optional[int] = None) -> None:
         super().__init__()
         self.embedding = nn.Embedding(
@@ -20,41 +22,43 @@ class TokenEmbedding(nn.Module):
             padding_idx=padding_idx,
         )
 
-    # Embed integer token IDs into dense vectors.
+    # Function: forward
+    # Description: Map token IDs to dense embeddings.
+    # Args:
+    #   tokens: Tensor of token indices.
+    # Returns:
+    #   Tensor containing embedding vectors.
     def forward(self, tokens: Tensor) -> Tensor:
-        """Embed integer token IDs into dense vectors."""
         return self.embedding(tokens)
 
 
 class PositionalEncoding(nn.Module):
-    """Sinusoidal positional encoding with optional dropout."""
-
+    # Function: __init__
+    # Description: Build sinusoidal positional table with optional dropout.
+    # Args:
+    #   embed_dim: Embedding size used by the model.
+    #   max_len: Maximum sequence length supported.
+    #   dropout: Dropout rate applied after adding positional encodings.
     def __init__(self, embed_dim: int, max_len: int = 10000, dropout: float = 0.0) -> None:
         super().__init__()
         position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, embed_dim, 2, dtype=torch.float32) * (-math.log(10000.0) / embed_dim))
+        div_term = torch.exp(
+            torch.arange(0, embed_dim, 2, dtype=torch.float32) * (-math.log(10000.0) / embed_dim)
+        )
         pe = torch.zeros(max_len, embed_dim, dtype=torch.float32)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer("positional_table", pe.unsqueeze(0), persistent=False)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    # Add positional encodings to the input sequence.
+    # Function: forward
+    # Description: Add positional encodings to token embeddings.
     # Args:
-    #   x: Input tensor shaped (batch, seq_len, embed_dim).
-    #   offset: Starting position offset for masking or chunking.
+    #   x: Input embedding tensor.
+    #   offset: Starting offset applied for positional lookup.
     # Returns:
-    #   Tensor with positional encodings applied.
+    #   Tensor enhanced with positional information.
     def forward(self, x: Tensor, offset: int = 0) -> Tensor:
-        """Add positional encodings to the input sequence.
-
-        Args:
-            x: Input tensor shaped (batch, seq_len, embed_dim).
-            offset: Starting position offset for masking or chunking.
-
-        Returns:
-            Tensor with positional encodings applied.
-        """
         length = x.size(1)
         positional = self.positional_table[:, offset : offset + length]
         return self.dropout(x + positional)

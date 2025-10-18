@@ -1,5 +1,3 @@
-"""Core neural network layers powering the foundation transformer."""
-
 from __future__ import annotations
 
 import math
@@ -10,8 +8,14 @@ from torch import Tensor, nn
 
 
 class MLPBlock(nn.Module):
-    """Two-layer feed-forward block with configurable activation and dropout."""
-
+    # Function: __init__
+    # Description: Initialise a feed-forward network with activation and dropout.
+    # Args:
+    #   input_dim: Input feature dimension.
+    #   hidden_dim: Hidden layer size.
+    #   output_dim: Output feature dimension (defaults to input_dim).
+    #   activation: Activation module applied between linear layers.
+    #   dropout: Dropout rate applied after activation.
     def __init__(
         self,
         input_dim: int,
@@ -27,9 +31,13 @@ class MLPBlock(nn.Module):
         out_dim = output_dim or input_dim
         self.fc2 = nn.Linear(hidden_dim, out_dim)
 
-    # Apply the MLP block to the input tensor.
+    # Function: forward
+    # Description: Apply the two-layer feed-forward transformation.
+    # Args:
+    #   x: Input tensor.
+    # Returns:
+    #   Tensor resulting from feed-forward processing.
     def forward(self, x: Tensor) -> Tensor:
-        """Apply the MLP block to the input tensor."""
         x = self.fc1(x)
         x = self.activation(x)
         x = self.dropout(x)
@@ -38,29 +46,45 @@ class MLPBlock(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-    """Generic residual wrapper applying dropout to the module output."""
-
+    # Function: __init__
+    # Description: Wrap a module with residual addition and optional dropout.
+    # Args:
+    #   module: Target module whose output is added to input.
+    #   dropout: Dropout rate applied to module output.
     def __init__(self, module: nn.Module, dropout: float = 0.0) -> None:
         super().__init__()
         self.module = module
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    # Add module output back to the original input.
+    # Function: forward
+    # Description: Execute the wrapped module and add input as residual.
+    # Args:
+    #   x: Input tensor.
+    # Returns:
+    #   Tensor representing residual output.
     def forward(self, x: Tensor, *args, **kwargs) -> Tensor:
-        """Add module output back to the original input."""
         return x + self.dropout(self.module(x, *args, **kwargs))
 
 
 class ScaledDotProductAttention(nn.Module):
-    """Scaled dot-product attention with optional dropout."""
-
+    # Function: __init__
+    # Description: Configure attention with optional dropout on weights.
+    # Args:
+    #   dropout: Dropout probability applied to attention scores.
     def __init__(self, dropout: float = 0.0) -> None:
         super().__init__()
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    # Compute attention outputs given query, key, value, and mask.
+    # Function: forward
+    # Description: Compute scaled-dot attention given query, key, value, and masks.
+    # Args:
+    #   q: Query tensor.
+    #   k: Key tensor.
+    #   v: Value tensor.
+    #   mask: Optional mask restricting attention weights.
+    # Returns:
+    #   Tensor resulting from attention-weighted values.
     def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        """Compute attention outputs given query, key, value, and mask."""
         d_k = q.size(-1)
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
@@ -72,8 +96,13 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class MultiHeadSelfAttention(nn.Module):
-    """Multi-head self-attention projecting inputs to multiple heads."""
-
+    # Function: __init__
+    # Description: Initialise projections and attention components for multi-head attention.
+    # Args:
+    #   embed_dim: Embedding dimension of the model.
+    #   num_heads: Number of attention heads.
+    #   dropout: Dropout applied to attention and output projection.
+    #   bias: Whether linear projections use biases.
     def __init__(
         self,
         embed_dim: int,
@@ -95,9 +124,9 @@ class MultiHeadSelfAttention(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    # Reshape projected tensor into multi-head representation.
+    # Function: _reshape
+    # Description: Reshape for multi-head representation.
     def _reshape(self, x: Tensor) -> Tensor:
-        """Reshape projected tensor into multi-head representation."""
         bsz, seq_len, _ = x.shape
         return (
             x.view(bsz, seq_len, self.num_heads, self.head_dim)
@@ -106,9 +135,9 @@ class MultiHeadSelfAttention(nn.Module):
             .view(bsz * self.num_heads, seq_len, self.head_dim)
         )
 
-    # Merge multi-head outputs back into the embedding dimension.
+    # Function: _combine
+    # Description: Merge head outputs back into embedding space.
     def _combine(self, x: Tensor, batch_size: int) -> Tensor:
-        """Merge multi-head outputs back into the embedding dimension."""
         seq_len = x.size(1)
         return (
             x.view(batch_size, self.num_heads, seq_len, self.head_dim)
@@ -117,9 +146,14 @@ class MultiHeadSelfAttention(nn.Module):
             .view(batch_size, seq_len, self.embed_dim)
         )
 
-    # Apply multi-head self-attention to the input sequence.
+    # Function: forward
+    # Description: Apply multi-head self-attention to the sequence.
+    # Args:
+    #   x: Input tensor.
+    #   mask: Optional attention mask.
+    # Returns:
+    #   Tensor processed by attention.
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        """Apply multi-head self-attention to the input sequence."""
         batch_size = x.size(0)
 
         q = self._reshape(self.q_proj(x))
@@ -149,8 +183,16 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class TransformerEncoderLayer(nn.Module):
-    """Transformer encoder layer with pre/post-norm options."""
-
+    # Function: __init__
+    # Description: Build a transformer encoder layer with optional pre-normalization.
+    # Args:
+    #   embed_dim: Embedding dimension for tokens.
+    #   num_heads: Number of self-attention heads.
+    #   mlp_ratio: Expansion ratio for feed-forward network.
+    #   dropout: Dropout applied to feed-forward outputs.
+    #   attention_dropout: Dropout applied to attention weights.
+    #   activation: Activation module for feed-forward.
+    #   norm_first: Whether to apply LayerNorm before operations.
     def __init__(
         self,
         embed_dim: int,
@@ -182,9 +224,14 @@ class TransformerEncoderLayer(nn.Module):
         )
         self.mlp_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    # Run self-attention followed by feed-forward transformation.
+    # Function: forward
+    # Description: Execute attention followed by feed-forward with residual connections.
+    # Args:
+    #   x: Input tensor.
+    #   mask: Optional attention mask.
+    # Returns:
+    #   Tensor after encoder processing.
     def forward(self, x: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        """Run self-attention followed by feed-forward transformation."""
         if self.norm_first:
             x = x + self.attn_dropout(self.self_attn(self.norm1(x), mask=mask))
             x = x + self.mlp_dropout(self.mlp(self.norm2(x)))

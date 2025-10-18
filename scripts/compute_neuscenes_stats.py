@@ -55,6 +55,7 @@ def to_dataset_config(obj: Any) -> DatasetConfig:
     raise TypeError("Unsupported dataset configuration input.")
 
 
+"""Parse command-line arguments for dataset statistics reporting."""
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Compute summary statistics for the Neuscenes dataset."
@@ -79,15 +80,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+"""Entry point: load configs, compute metadata, and print summary JSON."""
 def main() -> None:
     args = parse_args()
-    dataset_config = to_dataset_config(load_config_target(args.config)) if args.config else None
+    dataset_config = load_neuscenes_config(args.config) if args.config else None
     dataset_root = args.dataset_root or (dataset_config.dataset_root if dataset_config else None)
     if dataset_root is None:
-        raise ValueError("Provide a dataset root via --dataset-root or the config class.")
+        raise ValueError("Provide a dataset root via --dataset-root or the config file.")
     metadata = load_neuscenes_metadata(dataset_root)
     summary = summarize_neuscenes(metadata)
     if dataset_config:
+        # Surface split sizes to help validate partitioning logic.
         splits = split_neuscenes(metadata, dataset_config)
         summary["split_counts"] = {name: len(items) for name, items in splits.items()}
     dump_kwargs = {"indent": 2, "sort_keys": True} if args.pretty else {}

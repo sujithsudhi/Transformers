@@ -1,5 +1,3 @@
-"""Foundation transformer model tailored for Neuscenes scene embeddings."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,8 +11,6 @@ from .core import PositionalEncoding, TransformerEncoderLayer
 
 @dataclass
 class FoundationModelConfig:
-    """Configuration namespace for the Neuscenes foundation transformer."""
-
     input_dim: int
     embed_dim: int = 256
     depth: int = 6
@@ -27,8 +23,9 @@ class FoundationModelConfig:
     num_outputs: int = 1
     pooling: str = "cls"
 
+    # Function: __post_init__
+    # Description: Validate configuration invariants after dataclass init.
     def __post_init__(self) -> None:
-        """Validate configuration values after dataclass initialisation."""
         if self.pooling not in {"cls", "mean"}:
             raise ValueError("pooling must be either 'cls' or 'mean'.")
         if self.embed_dim % self.num_heads != 0:
@@ -37,9 +34,11 @@ class FoundationModelConfig:
             raise ValueError("input_dim must be positive.")
 
 
-class NeuscenesFoundationModel(nn.Module):
-    """Transformer-based backbone producing scene-level representations."""
-
+class FoundationModel(nn.Module):
+    # Function: __init__
+    # Description: Assemble transformer encoder layers and classification head.
+    # Args:
+    #   config: FoundationModelConfig detailing architecture hyperparameters.
     def __init__(self, config: FoundationModelConfig) -> None:
         super().__init__()
         self.config = config
@@ -76,8 +75,9 @@ class NeuscenesFoundationModel(nn.Module):
 
         self.apply(self._init_weights)
 
+    # Function: _init_weights
+    # Description: Initialize module weights following transformer heuristics.
     def _init_weights(self, module: nn.Module) -> None:
-        """Initialise module weights following transformer conventions."""
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std=0.02)
             if module.bias is not None:
@@ -86,16 +86,14 @@ class NeuscenesFoundationModel(nn.Module):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
+    # Function: forward_features
+    # Description: Produce pooled features from token embeddings before head.
+    # Args:
+    #   inputs: Token-level input tensor.
+    #   mask: Optional mask to indicate valid tokens.
+    # Returns:
+    #   Tensor of pooled hidden representations.
     def forward_features(self, inputs: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        """Produce pooled scene features prior to the prediction head.
-
-        Args:
-            inputs: Tensor of sensor features shaped (batch, seq, input_dim).
-            mask: Optional attention mask indicating valid tokens.
-
-        Returns:
-            Tensor of pooled latent representations.
-        """
         x = self.input_proj(inputs)
         batch_size = x.size(0)
 
@@ -127,15 +125,13 @@ class NeuscenesFoundationModel(nn.Module):
             return (tokens * mask_tokens.unsqueeze(-1)).sum(dim=1) / lengths
         return tokens.mean(dim=1)
 
+    # Function: forward
+    # Description: Execute the full model pipeline returning logits.
+    # Args:
+    #   inputs: Input tensor containing token features.
+    #   mask: Optional attention mask.
+    # Returns:
+    #   Prediction tensor produced by the classification head.
     def forward(self, inputs: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        """Run the full model and return head outputs.
-
-        Args:
-            inputs: Tensor of sensor features shaped (batch, seq, input_dim).
-            mask: Optional attention mask indicating valid tokens.
-
-        Returns:
-            Prediction tensor shaped (batch, num_outputs).
-        """
         features = self.forward_features(inputs, mask)
         return self.head(features)

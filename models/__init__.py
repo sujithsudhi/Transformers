@@ -1,4 +1,6 @@
-"""Core deep-learning utilities built on PyTorch."""
+"""Model package exposing transformer architecture and training helpers."""
+
+from .foundation import FoundationModel, FoundationModelConfig
 from .training import (
     TrainingConfig,
     Trainer,
@@ -9,6 +11,8 @@ from .training import (
 )
 
 __all__ = [
+    "FoundationModel",
+    "FoundationModelConfig",
     "TrainingConfig",
     "Trainer",
     "train_one_epoch",
@@ -16,3 +20,4 @@ __all__ = [
     "fit",
     "load_training_config",
 ]
+

@@ -23,9 +23,9 @@ from src.datasets import load_neuscenes_metadata, split_neuscenes
 from src.datasets.neuscenes import NeuscenesMetadata, SceneStats
 from src.models import FoundationModelConfig, NeuscenesFoundationModel
 
-class NeuscenesSceneDataset(Dataset):
-    """Dataset converting Neuscenes scene aggregates into tensor features."""
 
+"""Dataset converting Neuscenes scene aggregates into tensor features."""
+class NeuscenesSceneDataset(Dataset):
     FEATURE_DIM = 3
 
     """Store scene metadata and fixed sensor ordering.
@@ -68,9 +68,8 @@ class NeuscenesSceneDataset(Dataset):
         return features, target
 
 
-"""Parse CLI arguments for the training application."""
+"""Parse CLI arguments controlling the Neuscenes foundation run."""
 def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for the training application."""
     parser = argparse.ArgumentParser(description="Train the Neuscenes foundation model.")
     parser.add_argument(
         "--config",
@@ -96,29 +95,43 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path to store training history JSON.",
     )
+    parser.add_argument(
+        "--plot-out",
+        type=Path,
+        default=None,
+        help="Optional path to save a loss curve plot image.",
+    )
     return parser.parse_args()
 
 
-"""Import and instantiate a configuration class referenced by string."""
-def load_config_target(target: str) -> Any:
-    """Import and instantiate a configuration class referenced by string."""
-    if not target:
-        raise ValueError("Configuration target string cannot be empty.")
-    if ":" in target:
-        module_name, attr_name = target.split(":", 1)
-    else:
-        module_name, attr_name = target.rsplit(".", 1)
+"""Load a CONFIG_CLASS implementation from a Python file."""
+def load_config_class(path: Path) -> type:
+    module_name, attr_name = path.stem.split(".", 1)
     module = import_module(module_name)
-    attr = getattr(module, attr_name)
-    if isinstance(attr, type):
-        return attr()
-    return attr
+    return getattr(module, attr_name)
 
 
-def describe_config(obj: Any) -> str:
-    """Return a stable identifier for a configuration object."""
-    cls = obj.__class__
-    return f"{cls.__module__}:{cls.__name__}"
+"""Resolve a JSON-style config reference into a dict."""
+def load_json_config(path: Path) -> Dict[str, Any]:
+    resolved = path.expanduser().resolve()
+    with resolved.open("r", encoding="utf-8") as handle:
+        cleaned_lines = []
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("//"):
+                continue
+            cleaned_lines.append(line.split("//", 1)[0])
+    cleaned = "\n".join(cleaned_lines)
+    return json.loads(cleaned)
+
+
+"""Resolve relative paths against the base application config."""
+def resolve_path(base_config: Path, candidate: Optional[Path | str]) -> Optional[Path]:
+    if isinstance(candidate, Path):
+        return candidate.expanduser().resolve()
+    if isinstance(candidate, str):
+        return base_config.parent.joinpath(candidate).resolve()
+    return None
 
 
 """Derive a stable sensor index from dataset metadata.
@@ -238,11 +251,56 @@ def maybe_save_history(history: List[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training history written to {resolved}")
 
 
-# Entry point coordinating configuration loading and training.
+def maybe_plot_history(history: List[Dict[str, Any]], path: Optional[Path]) -> None:
+    """Render train/validation loss curves and persist them if requested."""
+    if path is None or not history:
+        return
+    try:
+        import matplotlib.pyplot as plt  # type: ignore
+    except ImportError:  # pragma: no cover - matplotlib is optional
+        print("matplotlib is not available; skipping training curve plot.")
+        return
+
+    resolved = path.expanduser().resolve()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+
+    train_points = [
+        (entry.get("epoch"), entry.get("train", {}).get("loss"))
+        for entry in history
+        if entry.get("train") and entry.get("train", {}).get("loss") is not None
+    ]
+    val_points = [
+        (entry.get("epoch"), entry.get("val", {}).get("loss"))
+        for entry in history
+        if entry.get("val") and entry.get("val", {}).get("loss") is not None
+    ]
+    if not train_points and not val_points:
+        return
+
+    plt.figure(figsize=(8, 5))
+    if train_points:
+        train_epochs, train_losses = zip(*train_points)
+        plt.plot(train_epochs, train_losses, marker="o", label="Train Loss")
+    if val_points:
+        val_epochs, val_losses = zip(*val_points)
+        plt.plot(val_epochs, val_losses, marker="o", label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training History")
+    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(resolved)
+    plt.close()
+    print(f"Training curve plotted to {resolved}")
+
+
+"""Entry point orchestrating config loading, dataloaders, and training."""
 def main() -> None:
-    """Entry point coordinating configuration loading and training."""
     args = parse_args()
-    app_config = load_config_target(args.config)
+    app_config_path = args.config.expanduser().resolve()
+    app_config_cls = load_config_class(app_config_path)
+    app_config = app_config_cls()
 
     dataset_settings = (
         load_config_target(args.dataset_config) if args.dataset_config else app_config.dataset
@@ -305,7 +363,7 @@ def main() -> None:
     splits = split_neuscenes(metadata, dataset_config)
     sensor_index = build_sensor_index(metadata)
 
-    dataloader_cfg = to_dict(app_config.dataloader)
+    dataloader_cfg = asdict(app_config.dataloader)
     train_loader, val_loader, test_loader = build_dataloaders(
         splits,
         sensor_index,
@@ -352,6 +410,14 @@ def main() -> None:
     history_target = args.history_out or getattr(app_config, "history_output", None)
     history_path = Path(history_target) if history_target is not None else None
     maybe_save_history(history, history_path)
+
+    if args.plot_out is not None:
+        plot_path: Optional[Path] = args.plot_out
+    elif history_path is not None:
+        plot_path = history_path.with_suffix(".png")
+    else:
+        plot_path = PROJECT_ROOT / "experiments" / "training_history.png"
+    maybe_plot_history(history, plot_path)
 
     os.environ["FOUNDATION_APP_CONFIG"] = describe_config(app_config)
     os.environ["FOUNDATION_DATASET_CONFIG"] = (
