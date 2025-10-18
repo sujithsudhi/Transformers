@@ -27,10 +27,17 @@ pip install -r requirements.txt
 ## Training
 
 ```bash
-python train_sentiment.py \
-  --batch-size 32 \
-  --epochs 5 \
-  --max-tokens 256
+python train_sentiment.py --config configs.imdb:IMDBConfig
 ```
 
-By default training artefacts are written to `results/history.json` and `results/history.png`. The script prints final test-set loss metrics once training completes.
+Override any parameter directly:
+
+```bash
+python train_sentiment.py \
+  --config configs.imdb:IMDBConfig \
+  --epochs 3 \
+  --batch-size 16 \
+  --history-out results/custom_history.json
+```
+
+The IMDB config inherits shared defaults defined in `configs/base.py`. For new applications, create a module (see `configs/foundation.py`) that subclasses the base dataclasses, point `train_sentiment.py` at it via `--config`, and adjust dataset/model hyperparameters as needed. Loss curves and metrics default to the paths declared on the config (`history_path`, `plot_path`).

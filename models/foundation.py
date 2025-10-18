@@ -23,8 +23,6 @@ class FoundationModelConfig:
     num_outputs: int = 1
     pooling: str = "cls"
 
-    # Function: __post_init__
-    # Description: Validate configuration invariants after dataclass init.
     def __post_init__(self) -> None:
         if self.pooling not in {"cls", "mean"}:
             raise ValueError("pooling must be either 'cls' or 'mean'.")
@@ -35,23 +33,21 @@ class FoundationModelConfig:
 
 
 class FoundationModel(nn.Module):
-    # Function: __init__
-    # Description: Assemble transformer encoder layers and classification head.
-    # Args:
-    #   config: FoundationModelConfig detailing architecture hyperparameters.
+    """Transformer backbone producing review representations."""
     def __init__(self, config: FoundationModelConfig) -> None:
         super().__init__()
         self.config = config
 
         self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
-        self.position = PositionalEncoding(config.embed_dim, dropout=config.dropout)
+        self.position = PositionalEncoding(config.embed_dim,
+                                           dropout=config.dropout)
         self.encoder = nn.ModuleList(
             TransformerEncoderLayer(
-                embed_dim=config.embed_dim,
-                num_heads=config.num_heads,
-                mlp_ratio=config.mlp_ratio,
-                dropout=config.dropout,
-                attention_dropout=config.attention_dropout,
+                embed_dim         = config.embed_dim,
+                num_heads         = config.num_heads,
+                mlp_ratio         = config.mlp_ratio,
+                dropout           = config.dropout,
+                attention_dropout = config.attention_dropout,
             )
             for _ in range(config.depth)
         )
@@ -75,9 +71,8 @@ class FoundationModel(nn.Module):
 
         self.apply(self._init_weights)
 
-    # Function: _init_weights
-    # Description: Initialize module weights following transformer heuristics.
     def _init_weights(self, module: nn.Module) -> None:
+        """Initialise module weights following transformer conventions."""
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std=0.02)
             if module.bias is not None:
@@ -86,14 +81,10 @@ class FoundationModel(nn.Module):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
-    # Function: forward_features
-    # Description: Produce pooled features from token embeddings before head.
-    # Args:
-    #   inputs: Token-level input tensor.
-    #   mask: Optional mask to indicate valid tokens.
-    # Returns:
-    #   Tensor of pooled hidden representations.
-    def forward_features(self, inputs: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+    def forward_features(self,
+                         inputs: Tensor,
+                         mask  : Optional[Tensor] = None) -> Tensor:
+        """Produce pooled latent features prior to the classification head."""
         x = self.input_proj(inputs)
         batch_size = x.size(0)
 
@@ -125,13 +116,10 @@ class FoundationModel(nn.Module):
             return (tokens * mask_tokens.unsqueeze(-1)).sum(dim=1) / lengths
         return tokens.mean(dim=1)
 
-    # Function: forward
-    # Description: Execute the full model pipeline returning logits.
-    # Args:
-    #   inputs: Input tensor containing token features.
-    #   mask: Optional attention mask.
-    # Returns:
-    #   Prediction tensor produced by the classification head.
-    def forward(self, inputs: Tensor, mask: Optional[Tensor] = None) -> Tensor:
-        features = self.forward_features(inputs, mask)
+    def forward(self,
+                inputs: Tensor,
+                mask  : Optional[Tensor] = None) -> Tensor:
+        """Execute the full model pipeline and return prediction logits."""
+        features = self.forward_features(inputs,
+                                         mask)
         return self.head(features)

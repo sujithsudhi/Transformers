@@ -21,24 +21,21 @@ from models import (
 )
 
 
-# Function: build_optimizer
-# Description: Construct an AdamW optimizer applying provided hyperparameters.
 def build_optimizer(model: nn.Module,
                     lr: float,
                     weight_decay: float) -> torch.optim.Optimizer:
+    """Construct an AdamW optimizer applying provided hyperparameters."""
     return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 
-# Function: build_loss
-# Description: Return the BCEWithLogitsLoss for binary sentiment targets.
 def build_loss() -> nn.Module:
+    """Return the BCEWithLogitsLoss for binary sentiment targets."""
     return nn.BCEWithLogitsLoss()
 
 
-# Function: maybe_save_history
-# Description: Persist training history JSON if an output path is provided.
 def maybe_save_history(history: list[Dict[str, Any]],
                        path: Optional[Path]) -> None:
+    """Persist training history JSON if an output path is provided."""
     if path is None:
         return
     resolved = path.expanduser().resolve()
@@ -48,10 +45,9 @@ def maybe_save_history(history: list[Dict[str, Any]],
     print(f"Training history written to {resolved}")
 
 
-# Function: maybe_plot_history
-# Description: Render training/validation loss curves when matplotlib is available.
 def maybe_plot_history(history: list[Dict[str, Any]],
                        path: Optional[Path]) -> None:
+    """Render training/validation loss curves when matplotlib is available."""
     if path is None or not history:
         return
     try:
@@ -95,9 +91,8 @@ def maybe_plot_history(history: list[Dict[str, Any]],
     print(f"Training curve plotted to {resolved}")
 
 
-# Function: load_config_target
-# Description: Import and instantiate a configuration object referenced by string.
 def load_config_target(target: str) -> Any:
+    """Import and instantiate a configuration object referenced by string."""
     if not target:
         raise ValueError("Configuration target string cannot be empty.")
     if ":" in target:
@@ -111,9 +106,8 @@ def load_config_target(target: str) -> Any:
     return attr
 
 
-# Function: main
-# Description: Orchestrate configuration loading, dataloader creation, and training.
 def main() -> None:
+    """Orchestrate configuration loading, dataloaders, and IMDB training."""
     torch.manual_seed(42)
 
     app_config = load_config_target("configs.imdb:IMDBConfig")

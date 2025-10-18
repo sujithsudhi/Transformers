@@ -15,24 +15,13 @@ _TOKEN_PATTERN = re.compile(r"\b\w+\b")
 _MAX_TOKEN_LENGTH = 20
 
 
-# Function: _tokenize
-# Description: Tokenize raw review text into word-level tokens using regex boundaries.
-# Args:
-#   text: Raw review string to tokenize.
-# Returns:
-#   List of token strings extracted from the input text.
 def _tokenize(text: str) -> List[str]:
+    """Tokenize a review into word-level tokens using regex boundaries."""
     return _TOKEN_PATTERN.findall(text)
 
 
-# Function: _normalise
-# Description: Normalize a value by a denominator with zero-division protection.
-# Args:
-#   value: Numerator for the normalisation.
-#   denominator: Denominator used to scale the numerator.
-# Returns:
-#   Normalised float result bounded at zero when denominator is invalid.
 def _normalise(value: float, denominator: float) -> float:
+    """Normalise a value by its denominator, guarding against division by zero."""
     if denominator <= 0:
         return 0.0
     return value / denominator
@@ -43,13 +32,6 @@ class IMDBDataset(Dataset):
 
     FEATURE_DIM = 4
 
-    # Function: __init__
-    # Description: Load the IMDB split and prepare token-based feature tensors.
-    # Args:
-    #   split: Dataset portion, expected to be 'train' or 'test'.
-    #   max_tokens: Maximum number of tokens to encode per review.
-    #   cache_dir: Optional path used by datasets library for caching.
-    #   dataset_name: Dataset identifier for Hugging Face datasets.
     def __init__(
         self,
         split       : str,
@@ -57,6 +39,7 @@ class IMDBDataset(Dataset):
         cache_dir   : Optional[Path] = None,
         dataset_name: str = "imdb",
     ) -> None:
+        """Load an IMDB split and pre-compute token based features."""
         if split not in {"train", "test"}:
             raise ValueError("IMDBDataset split must be either 'train' or 'test'.")
         dataset = load_dataset(
@@ -69,20 +52,12 @@ class IMDBDataset(Dataset):
         self.max_tokens = int(max_tokens)
         self.feature_dim = self.FEATURE_DIM
 
-    # Function: __len__
-    # Description: Return the number of review samples available in the dataset.
-    # Returns:
-    #   Integer count of dataset elements.
     def __len__(self) -> int:
+        """Return the number of review samples available in the dataset."""
         return len(self.texts)
 
-    # Function: _encode_token
-    # Description: Convert a single token into a feature vector capturing character makeup.
-    # Args:
-    #   token: Word token to transform into numerical features.
-    # Returns:
-    #   Tensor encoding token statistics (length, alpha/digit ratios, bias).
     def _encode_token(self, token: str) -> torch.Tensor:
+        """Convert a token into a feature vector capturing character statistics."""
         length = len(token)
         alpha = sum(char.isalpha() for char in token)
         digits = sum(char.isdigit() for char in token)
@@ -92,13 +67,8 @@ class IMDBDataset(Dataset):
         digit_ratio = _normalise(digits, length)
         return torch.tensor([length_norm, alpha_ratio, digit_ratio, 1.0], dtype=torch.float32)
 
-    # Function: __getitem__
-    # Description: Build padded token feature tensor and sentiment label for an index.
-    # Args:
-    #   index: Sample index within the dataset.
-    # Returns:
-    #   Tuple containing tensorised token features and target label tensor.
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Return padded token features and binary sentiment label for the given index."""
         text = self.texts[index]
         label = float(self.labels[index])
         tokens = _tokenize(text)[: self.max_tokens]
@@ -109,16 +79,6 @@ class IMDBDataset(Dataset):
         return features, target
 
 
-# Function: build_imdb_dataloaders
-# Description: Construct train and test dataloaders for IMDB sentiment classification.
-# Args:
-#   batch_size: Number of samples per batch.
-#   max_tokens: Max tokens retained per review.
-#   num_workers: Number of subprocesses used for data loading.
-#   cache_dir: Location to cache downloaded dataset files.
-#   dataset_name: Hugging Face dataset identifier.
-# Returns:
-#   Tuple containing training and test dataloaders.
 def build_imdb_dataloaders(
     batch_size : int = 32,
     max_tokens : int = 256,
@@ -126,6 +86,7 @@ def build_imdb_dataloaders(
     cache_dir  : Optional[Path] = None,
     dataset_name: str = "imdb",
 ) -> Tuple[DataLoader, DataLoader]:
+    """Construct train and test dataloaders for IMDB sentiment classification."""
     cache_dir = cache_dir or Path("data/cache")
     cache_dir = cache_dir.expanduser().resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)

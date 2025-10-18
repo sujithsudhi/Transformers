@@ -30,14 +30,8 @@ _TRAINING_DEFAULTS: Dict[str, Any] = {
 }
 
 
-# Function: _resolve_bool
-# Description: Convert assorted truthy inputs into a boolean with auto fallback.
-# Args:
-#   value: Candidate input that may represent a boolean.
-#   default: Value returned when 'auto' is encountered.
-# Returns:
-#   Boolean indicating resolved truth value.
 def _resolve_bool(value: Any, default: bool) -> bool:
+    """Convert assorted truthy inputs into a boolean with auto fallback."""
     if value is None:
         return default
     if isinstance(value, bool):
@@ -53,13 +47,8 @@ def _resolve_bool(value: Any, default: bool) -> bool:
     return bool(value)
 
 
-# Function: _resolve_device
-# Description: Determine target device string from potentially auto value.
-# Args:
-#   value: Raw device specification or 'auto'.
-# Returns:
-#   Device string compatible with torch.device.
 def _resolve_device(value: Any) -> str:
+    """Return a device string, resolving 'auto' to cuda or cpu."""
     if value is None:
         value = "auto"
     if isinstance(value, str):
@@ -70,25 +59,14 @@ def _resolve_device(value: Any) -> str:
     return str(value)
 
 
-# Function: _resolve_positive_int
-# Description: Resolve integer inputs ensuring value is positive.
-# Args:
-#   value: Proposed integer value or None.
-#   default: Fallback value when input is missing.
-# Returns:
-#   Positive integer greater than or equal to one.
 def _resolve_positive_int(value: Any, default: int) -> int:
+    """Resolve integer inputs ensuring a positive result."""
     candidate = default if value is None else int(value)
     return max(1, candidate)
 
 
-# Function: _resolve_gradient_clip_norm
-# Description: Normalise gradient clipping configuration.
-# Args:
-#   value: Raw clip magnitude or sentinel.
-# Returns:
-#   Positive float clip value or None when disabled.
 def _resolve_gradient_clip_norm(value: Any) -> float | None:
+    """Normalise gradient clipping configuration value."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -101,57 +79,45 @@ def _resolve_gradient_clip_norm(value: Any) -> float | None:
     return clip if clip > 0 else None
 
 
-# Function: _resolve_use_amp
-# Description: Decide whether automatic mixed precision should be enabled.
-# Args:
-#   value: AMP configuration supporting boolean or 'auto'.
-# Returns:
-#   Boolean indicating AMP usage.
 def _resolve_use_amp(value: Any) -> bool:
+    """Decide whether automatic mixed precision should be enabled."""
     default = torch.cuda.is_available()
     resolved = _resolve_bool(value, default)
     return resolved and torch.cuda.is_available()
 
 
-# Function: _default_epochs
-# Description: Provide default epoch count from shared defaults.
 def _default_epochs() -> int:
+    """Provide default epoch count from shared defaults."""
     return _resolve_positive_int(_TRAINING_DEFAULTS.get("epochs"), 5)
 
 
-# Function: _default_device
-# Description: Provide default device string from shared defaults.
 def _default_device() -> str:
+    """Provide default device string from shared defaults."""
     return _resolve_device(_TRAINING_DEFAULTS.get("device"))
 
 
-# Function: _default_gradient_clip_norm
-# Description: Provide default gradient clip norm from shared defaults.
 def _default_gradient_clip_norm() -> float | None:
+    """Provide default gradient clip norm from shared defaults."""
     return _resolve_gradient_clip_norm(_TRAINING_DEFAULTS.get("gradient_clip_norm"))
 
 
-# Function: _default_gradient_accumulation_steps
-# Description: Provide default gradient accumulation steps.
 def _default_gradient_accumulation_steps() -> int:
+    """Provide default gradient accumulation steps."""
     return _resolve_positive_int(_TRAINING_DEFAULTS.get("gradient_accumulation_steps"), 1)
 
 
-# Function: _default_use_amp
-# Description: Provide default AMP setting.
 def _default_use_amp() -> bool:
+    """Provide default AMP setting from shared defaults."""
     return _resolve_use_amp(_TRAINING_DEFAULTS.get("use_amp"))
 
 
-# Function: _default_log_interval
-# Description: Provide default logging interval.
 def _default_log_interval() -> int:
+    """Provide default logging interval from shared defaults."""
     return _resolve_positive_int(_TRAINING_DEFAULTS.get("log_interval"), 50)
 
 
-# Function: _default_non_blocking
-# Description: Provide default non-blocking transfer setting.
 def _default_non_blocking() -> bool:
+    """Provide default non-blocking transfer setting."""
     return _resolve_bool(_TRAINING_DEFAULTS.get("non_blocking"), True)
 
 
@@ -165,9 +131,8 @@ class TrainingConfig:
     log_interval: int = field(default_factory=_default_log_interval)
     non_blocking: bool = field(default_factory=_default_non_blocking)
 
-    # Function: __post_init__
-    # Description: Reconcile dynamic defaults and validate configuration.
     def __post_init__(self) -> None:
+        """Reconcile dynamic defaults and validate configuration values."""
         self.epochs = _resolve_positive_int(self.epochs, 5)
         self.device = _resolve_device(self.device)
         self.gradient_clip_norm = _resolve_gradient_clip_norm(self.gradient_clip_norm)
@@ -179,15 +144,10 @@ class TrainingConfig:
         self.non_blocking = _resolve_bool(self.non_blocking, True)
 
 
-# Function: load_training_config
-# Description: Load training configuration from mapping, path, or dataclass.
-# Args:
-#   source: Optional mapping, path, or TrainingConfig instance.
-# Returns:
-#   TrainingConfig with defaults merged.
 def load_training_config(
     source: Path | str | Mapping[str, Any] | TrainingConfig | None = None,
 ) -> TrainingConfig:
+    """Load training configuration from mapping, path, or dataclass."""
     if isinstance(source, TrainingConfig):
         return source
     if isinstance(source, Mapping):
@@ -215,15 +175,8 @@ def load_training_config(
     return TrainingConfig(**kwargs)
 
 
-# Function: _move_to_device
-# Description: Recursively move tensors within a batch to target device.
-# Args:
-#   batch: Arbitrary batch structure.
-#   device: Target torch.device.
-#   non_blocking: Flag toggling async transfers.
-# Returns:
-#   Batch mirrored on the target device.
 def _move_to_device(batch: Any, device: torch.device, non_blocking: bool) -> Any:
+    """Recursively move tensors within a batch to the target device."""
     if isinstance(batch, torch.Tensor):
         return batch.to(device, non_blocking=non_blocking)
     if isinstance(batch, Mapping):
@@ -235,13 +188,8 @@ def _move_to_device(batch: Any, device: torch.device, non_blocking: bool) -> Any
     return batch
 
 
-# Function: _split_batch
-# Description: Extract model inputs and targets from batch.
-# Args:
-#   batch: Batch structure from dataloader.
-# Returns:
-#   Tuple containing inputs and targets.
 def _split_batch(batch: Any) -> tuple[Any, Any]:
+    """Extract model inputs and targets from a dataloader batch."""
     if isinstance(batch, (list, tuple)):
         if len(batch) < 2:
             raise ValueError("Expected (inputs, targets) from the dataloader.")
@@ -254,13 +202,8 @@ def _split_batch(batch: Any) -> tuple[Any, Any]:
     raise TypeError("Unsupported batch structure; provide (inputs, targets).")
 
 
-# Function: _count_batch_items
-# Description: Estimate number of examples contained in a batch.
-# Args:
-#   batch: Dataloader batch.
-# Returns:
-#   Integer representing sample count.
 def _count_batch_items(batch: Any) -> int:
+    """Estimate number of examples contained in a batch."""
     if isinstance(batch, torch.Tensor):
         return batch.size(0)
     if isinstance(batch, Mapping):
@@ -272,18 +215,16 @@ def _count_batch_items(batch: Any) -> int:
     return 0
 
 
-# Function: _try_len
-# Description: Attempt to retrieve length from iterable when available.
 def _try_len(iterable: Iterable[Any]) -> Optional[int]:
+    """Return len(iterable) when available, otherwise None."""
     try:
         return len(iterable)  # type: ignore[arg-type]
     except (TypeError, AttributeError):
         return None
 
 
-# Function: _progress_iter
-# Description: Wrap iterable with tqdm progress bar when library is available.
 def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], Optional[Any]]:
+    """Wrap an iterable with a tqdm progress bar when available."""
     if tqdm is None:
         return iterable, None
     total = _try_len(iterable)
@@ -291,18 +232,6 @@ def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], O
     return bar, bar
 
 
-# Function: train_one_epoch
-# Description: Execute model training over a single epoch with gradient scaling support.
-# Args:
-#   model: Neural network under training.
-#   dataloader: Iterable yielding training batches.
-#   optimizer: Optimizer used for weight updates.
-#   loss_fn: Loss function computing training loss.
-#   config: Training configuration parameters.
-#   scaler: Optional gradient scaler enabling AMP.
-#   progress_desc: Optional string displayed on progress bar.
-# Returns:
-#   Dictionary containing aggregated training metrics.
 def train_one_epoch(model        : nn.Module,
                     dataloader   : Iterable[Any],
                     optimizer    : Optimizer,
@@ -311,6 +240,7 @@ def train_one_epoch(model        : nn.Module,
                     scaler       : Optional[GradScaler] = None,
                     progress_desc: Optional[str] = None,
                    ) -> Dict[str, float]:
+    """Execute training over a single epoch with gradient scaling support."""
     device = torch.device(config.device)
     model.to(device)
     model.train()
@@ -382,17 +312,6 @@ def train_one_epoch(model        : nn.Module,
     }
 
 
-# Function: evaluate
-# Description: Evaluate model on validation or test set without gradient updates.
-# Args:
-#   model: Model to evaluate.
-#   dataloader: Iterable producing evaluation batches.
-#   loss_fn: Loss function applied to predictions.
-#   device: Target device for evaluation.
-#   non_blocking: Whether to request non-blocking transfers.
-#   progress_desc: Optional label for progress bar.
-# Returns:
-#   Dictionary containing aggregated evaluation metrics.
 def evaluate(model        : nn.Module,
              dataloader   : Iterable[Any],
              loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
@@ -400,6 +319,7 @@ def evaluate(model        : nn.Module,
              non_blocking : bool = True,
              progress_desc: Optional[str] = None,
             ) -> Dict[str, float]:
+    """Evaluate a model on the provided dataloader without gradient tracking."""
     device = torch.device(device)
     model.to(device)
     model.eval()
@@ -435,8 +355,7 @@ def evaluate(model        : nn.Module,
 
 
 class Trainer:
-    # Function: __init__
-    # Description: Construct trainer managing training loop and optional scheduler.
+    """High-level training loop managing epochs, validation, and schedulers."""
     def __init__(
         self,
         model     : nn.Module,
@@ -447,6 +366,7 @@ class Trainer:
         val_loader: Optional[Iterable[Any]] = None,
         scheduler : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
     ) -> None:
+        """Initialise trainer encapsulating loaders, optimiser, and scheduler."""
         self.model = model.to(torch.device(config.device))
         self.optimizer = optimizer
         self.loss_fn = loss_fn
@@ -457,9 +377,8 @@ class Trainer:
         self.scaler = GradScaler(enabled=config.use_amp and torch.cuda.is_available())
         self.history: list[Dict[str, Any]] = []
 
-    # Function: fit
-    # Description: Perform full training run across configured epochs.
     def fit(self) -> list[Dict[str, Any]]:
+        """Perform the full training run across configured epochs."""
         for epoch in range(1, self.config.epochs + 1):
             train_metrics = train_one_epoch(model        = self.model,
                                             dataloader   = self.train_loader,
@@ -492,9 +411,8 @@ class Trainer:
 
         return self.history
 
-    # Function: _step_scheduler
-    # Description: Advance learning-rate scheduler considering validation metrics.
     def _step_scheduler(self, val_metrics: Optional[Dict[str, float]]) -> None:
+        """Advance the learning-rate scheduler using validation metrics when required."""
         if self.scheduler is None:
             return
         if isinstance(self.scheduler, ReduceLROnPlateau):
@@ -505,9 +423,6 @@ class Trainer:
             self.scheduler.step()
 
 
-# Function: fit
-# Description: Convenience helper to instantiate trainer and run training loop.
-# Args mirror Trainer initialisation.
 def fit(model     : nn.Module,
         optimizer : Optimizer,
         loss_fn   : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
@@ -516,6 +431,7 @@ def fit(model     : nn.Module,
         val_loader: Optional[Iterable[Any]] = None,
         scheduler : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
        ) -> list[Dict[str, Any]]:
+    """Convenience helper to instantiate a Trainer and execute training."""
     trainer = Trainer(model       = model,
                       optimizer   = optimizer,
                       loss_fn     = loss_fn,
