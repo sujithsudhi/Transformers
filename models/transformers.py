@@ -10,7 +10,7 @@ from .core import PositionalEncoding, TransformerEncoderLayer
 
 
 @dataclass
-class FoundationModelConfig:
+class TransformersModelConfig:
     input_dim: int
     embed_dim: int = 256
     depth: int = 6
@@ -32,9 +32,9 @@ class FoundationModelConfig:
             raise ValueError("input_dim must be positive.")
 
 
-class FoundationModel(nn.Module):
+class TransformersModel(nn.Module):
     """Transformer backbone producing review representations."""
-    def __init__(self, config: FoundationModelConfig) -> None:
+    def __init__(self, config: TransformersModelConfig) -> None:
         super().__init__()
         self.config = config
 

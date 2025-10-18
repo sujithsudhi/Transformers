@@ -1,6 +1,6 @@
 """Model package exposing transformer architecture and training helpers."""
 
-from .foundation import FoundationModel, FoundationModelConfig
+from .transformers import TransformersModel, TransformersModelConfig
 from .training import (
     TrainingConfig,
     Trainer,
@@ -11,8 +11,8 @@ from .training import (
 )
 
 __all__ = [
-    "FoundationModel",
-    "FoundationModelConfig",
+    "TransformersModel",
+    "TransformersModelConfig",
     "TrainingConfig",
     "Trainer",
     "train_one_epoch",
@@ -20,4 +20,3 @@ __all__ = [
     "fit",
     "load_training_config",
 ]
-

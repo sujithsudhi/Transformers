@@ -1,4 +1,4 @@
-"""Embedding modules used by the foundation transformer."""
+"""Embedding modules used by the transformers model."""
 
 from __future__ import annotations
 
@@ -41,4 +41,3 @@ class PositionalEncoding(nn.Module):
         length = x.size(1)
         positional = self.positional_table[:, offset : offset + length]
         return self.dropout(x + positional)
-

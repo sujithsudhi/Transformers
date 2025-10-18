@@ -1,4 +1,4 @@
-name: foundation-model
+name: transformers-model
 channels:
   - pytorch
   - nvidia

@@ -1,11 +1,11 @@
-# Foundation-Model
+# Transformers
 
-Sentiment-classification sandbox built on top of a lightweight transformer architecture. The project fine-tunes a generic foundation model on the IMDB reviews dataset using a configurable PyTorch training loop.
+Sentiment-classification sandbox built on top of a lightweight transformer architecture. The project fine-tunes a generic transformers model on the IMDB reviews dataset using a configurable PyTorch training loop.
 
 ## Project layout
 
 ```
-Foundation-Model/
+Transformers/
 ├── data/                # Dataset loaders and download helpers
 ├── models/              # Transformer model + training utilities
 ├── notebooks/           # Jupyter exploration (optional)

@@ -11,11 +11,11 @@ from torch import nn
 
 from data import build_imdb_dataloaders
 
-from models import (FoundationModel,
-                    FoundationModelConfig,
-                    TrainingConfig,
-                    Trainer,
-                    evaluate,
+from models import (TransformersModel,
+                    TransformersModelConfig,
+                     TrainingConfig,
+                     Trainer,
+                     evaluate,
                     load_training_config,)
 
 
@@ -131,9 +131,9 @@ def main() -> None:
 
     model_kwargs = asdict(app_config.model)
     model_kwargs["input_dim"] = feature_dim
-    model_config = FoundationModelConfig(**model_kwargs)
+    model_config = TransformersModelConfig(**model_kwargs)
     # Instantiate transformer backbone with resolved configuration.
-    model = FoundationModel(model_config)
+    model = TransformersModel(model_config)
 
     training_cfg = app_config.training
 

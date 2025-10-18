@@ -1,4 +1,4 @@
-"""Train the Neuscenes foundation model using configuration-driven orchestration."""
+"""Train the Neuscenes transformers model using configuration-driven orchestration."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from models.core import Trainer, evaluate, load_training_config
 from src.datasets import load_neuscenes_metadata, split_neuscenes
 from src.datasets.neuscenes import NeuscenesMetadata, SceneStats
-from models.models import FoundationModelConfig, NeuscenesFoundationModel
+from models import TransformersModel, TransformersModelConfig
 
 
 """Dataset converting Neuscenes scene aggregates into tensor features."""
@@ -63,9 +63,9 @@ class NeuscenesSceneDataset(Dataset):
         return features, target
 
 
-"""Parse CLI arguments controlling the Neuscenes foundation run."""
+"""Parse CLI arguments controlling the Neuscenes transformers run."""
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the Neuscenes foundation model.")
+    parser = argparse.ArgumentParser(description="Train the Neuscenes transformers model.")
     parser.add_argument(
         "--config",
         type=str,
@@ -375,8 +375,8 @@ def main() -> None:
             f"Configured input_dim ({model_cfg['input_dim']}) does not match dataset feature "
             f"dimension ({NeuscenesSceneDataset.FEATURE_DIM})."
         )
-    model_config = FoundationModelConfig(**model_cfg)
-    model = NeuscenesFoundationModel(model_config)
+    model_config = TransformersModelConfig(**model_cfg)
+    model = TransformersModel(model_config)
 
     optimizer = build_optimizer(model, to_dict(app_config.optimizer))
     loss_fn = build_loss(to_dict(app_config.loss))
