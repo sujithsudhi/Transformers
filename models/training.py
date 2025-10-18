@@ -1,3 +1,5 @@
+"""General training utilities built on PyTorch."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,20 +20,17 @@ except ImportError:  # pragma: no cover - tqdm is optional
     tqdm = None  # type: ignore
 
 
-# Default hyperparameters shared across training configs.
-_TRAINING_DEFAULTS: Dict[str, Any] = {
-    "epochs": 5,
-    "device": "auto",
-    "gradient_clip_norm": None,
-    "gradient_accumulation_steps": 1,
-    "use_amp": "auto",
-    "log_interval": 50,
-    "non_blocking": True,
-}
+_TRAINING_DEFAULTS: Dict[str, Any] = {"epochs": 5,
+                                      "device": "auto",
+                                      "gradient_clip_norm": None,
+                                      "gradient_accumulation_steps": 1,
+                                      "use_amp": "auto",
+                                      "log_interval": 50,
+                                      "non_blocking": True,
+                                    }
 
 
 def _resolve_bool(value: Any, default: bool) -> bool:
-    """Convert assorted truthy inputs into a boolean with auto fallback."""
     if value is None:
         return default
     if isinstance(value, bool):
@@ -48,7 +47,6 @@ def _resolve_bool(value: Any, default: bool) -> bool:
 
 
 def _resolve_device(value: Any) -> str:
-    """Return a device string, resolving 'auto' to cuda or cpu."""
     if value is None:
         value = "auto"
     if isinstance(value, str):
@@ -60,13 +58,11 @@ def _resolve_device(value: Any) -> str:
 
 
 def _resolve_positive_int(value: Any, default: int) -> int:
-    """Resolve integer inputs ensuring a positive result."""
     candidate = default if value is None else int(value)
     return max(1, candidate)
 
 
 def _resolve_gradient_clip_norm(value: Any) -> float | None:
-    """Normalise gradient clipping configuration value."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -80,44 +76,36 @@ def _resolve_gradient_clip_norm(value: Any) -> float | None:
 
 
 def _resolve_use_amp(value: Any) -> bool:
-    """Decide whether automatic mixed precision should be enabled."""
     default = torch.cuda.is_available()
     resolved = _resolve_bool(value, default)
     return resolved and torch.cuda.is_available()
 
 
 def _default_epochs() -> int:
-    """Provide default epoch count from shared defaults."""
     return _resolve_positive_int(_TRAINING_DEFAULTS.get("epochs"), 5)
 
 
 def _default_device() -> str:
-    """Provide default device string from shared defaults."""
     return _resolve_device(_TRAINING_DEFAULTS.get("device"))
 
 
 def _default_gradient_clip_norm() -> float | None:
-    """Provide default gradient clip norm from shared defaults."""
     return _resolve_gradient_clip_norm(_TRAINING_DEFAULTS.get("gradient_clip_norm"))
 
 
 def _default_gradient_accumulation_steps() -> int:
-    """Provide default gradient accumulation steps."""
     return _resolve_positive_int(_TRAINING_DEFAULTS.get("gradient_accumulation_steps"), 1)
 
 
 def _default_use_amp() -> bool:
-    """Provide default AMP setting from shared defaults."""
     return _resolve_use_amp(_TRAINING_DEFAULTS.get("use_amp"))
 
 
 def _default_log_interval() -> int:
-    """Provide default logging interval from shared defaults."""
     return _resolve_positive_int(_TRAINING_DEFAULTS.get("log_interval"), 50)
 
 
 def _default_non_blocking() -> bool:
-    """Provide default non-blocking transfer setting."""
     return _resolve_bool(_TRAINING_DEFAULTS.get("non_blocking"), True)
 
 
@@ -132,7 +120,6 @@ class TrainingConfig:
     non_blocking: bool = field(default_factory=_default_non_blocking)
 
     def __post_init__(self) -> None:
-        """Reconcile dynamic defaults and validate configuration values."""
         self.epochs = _resolve_positive_int(self.epochs, 5)
         self.device = _resolve_device(self.device)
         self.gradient_clip_norm = _resolve_gradient_clip_norm(self.gradient_clip_norm)
@@ -147,7 +134,6 @@ class TrainingConfig:
 def load_training_config(
     source: Path | str | Mapping[str, Any] | TrainingConfig | None = None,
 ) -> TrainingConfig:
-    """Load training configuration from mapping, path, or dataclass."""
     if isinstance(source, TrainingConfig):
         return source
     if isinstance(source, Mapping):
@@ -176,7 +162,6 @@ def load_training_config(
 
 
 def _move_to_device(batch: Any, device: torch.device, non_blocking: bool) -> Any:
-    """Recursively move tensors within a batch to the target device."""
     if isinstance(batch, torch.Tensor):
         return batch.to(device, non_blocking=non_blocking)
     if isinstance(batch, Mapping):
@@ -189,7 +174,6 @@ def _move_to_device(batch: Any, device: torch.device, non_blocking: bool) -> Any
 
 
 def _split_batch(batch: Any) -> tuple[Any, Any]:
-    """Extract model inputs and targets from a dataloader batch."""
     if isinstance(batch, (list, tuple)):
         if len(batch) < 2:
             raise ValueError("Expected (inputs, targets) from the dataloader.")
@@ -203,7 +187,6 @@ def _split_batch(batch: Any) -> tuple[Any, Any]:
 
 
 def _count_batch_items(batch: Any) -> int:
-    """Estimate number of examples contained in a batch."""
     if isinstance(batch, torch.Tensor):
         return batch.size(0)
     if isinstance(batch, Mapping):
@@ -216,7 +199,6 @@ def _count_batch_items(batch: Any) -> int:
 
 
 def _try_len(iterable: Iterable[Any]) -> Optional[int]:
-    """Return len(iterable) when available, otherwise None."""
     try:
         return len(iterable)  # type: ignore[arg-type]
     except (TypeError, AttributeError):
@@ -224,7 +206,6 @@ def _try_len(iterable: Iterable[Any]) -> Optional[int]:
 
 
 def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], Optional[Any]]:
-    """Wrap an iterable with a tqdm progress bar when available."""
     if tqdm is None:
         return iterable, None
     total = _try_len(iterable)
@@ -232,15 +213,15 @@ def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], O
     return bar, bar
 
 
-def train_one_epoch(model        : nn.Module,
-                    dataloader   : Iterable[Any],
-                    optimizer    : Optimizer,
-                    loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-                    config       : TrainingConfig,
-                    scaler       : Optional[GradScaler] = None,
-                    progress_desc: Optional[str] = None,
-                   ) -> Dict[str, float]:
-    """Execute training over a single epoch with gradient scaling support."""
+def train_one_epoch(
+    model: nn.Module,
+    dataloader: Iterable[Any],
+    optimizer: Optimizer,
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    config: TrainingConfig,
+    scaler: Optional[GradScaler] = None,
+    progress_desc: Optional[str] = None,
+) -> Dict[str, float]:
     device = torch.device(config.device)
     model.to(device)
     model.train()
@@ -269,7 +250,6 @@ def train_one_epoch(model        : nn.Module,
 
             should_step = step % accum_steps == 0
             if should_step:
-                # Perform gradient clipping and weight update when accumulation completes.
                 if config.gradient_clip_norm is not None:
                     if scaler.is_enabled():
                         scaler.unscale_(optimizer)
@@ -312,14 +292,14 @@ def train_one_epoch(model        : nn.Module,
     }
 
 
-def evaluate(model        : nn.Module,
-             dataloader   : Iterable[Any],
-             loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-             device       : str | torch.device,
-             non_blocking : bool = True,
-             progress_desc: Optional[str] = None,
-            ) -> Dict[str, float]:
-    """Evaluate a model on the provided dataloader without gradient tracking."""
+def evaluate(
+    model: nn.Module,
+    dataloader: Iterable[Any],
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    device: str | torch.device,
+    non_blocking: bool = True,
+    progress_desc: Optional[str] = None,
+) -> Dict[str, float]:
     device = torch.device(device)
     model.to(device)
     model.eval()
@@ -355,18 +335,16 @@ def evaluate(model        : nn.Module,
 
 
 class Trainer:
-    """High-level training loop managing epochs, validation, and schedulers."""
     def __init__(
         self,
-        model     : nn.Module,
-        optimizer : Optimizer,
-        loss_fn   : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        model: nn.Module,
+        optimizer: Optimizer,
+        loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         train_loader: Iterable[Any],
-        config    : TrainingConfig,
+        config: TrainingConfig,
         val_loader: Optional[Iterable[Any]] = None,
-        scheduler : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
+        scheduler: Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
     ) -> None:
-        """Initialise trainer encapsulating loaders, optimiser, and scheduler."""
         self.model = model.to(torch.device(config.device))
         self.optimizer = optimizer
         self.loss_fn = loss_fn
@@ -378,26 +356,27 @@ class Trainer:
         self.history: list[Dict[str, Any]] = []
 
     def fit(self) -> list[Dict[str, Any]]:
-        """Perform the full training run across configured epochs."""
         for epoch in range(1, self.config.epochs + 1):
-            train_metrics = train_one_epoch(model        = self.model,
-                                            dataloader   = self.train_loader,
-                                            optimizer    = self.optimizer,
-                                            loss_fn      = self.loss_fn,
-                                            config       = self.config,
-                                            scaler       = self.scaler,
-                                            progress_desc= f"Epoch {epoch} [train]",
-                                           )
+            train_metrics = train_one_epoch(
+                self.model,
+                self.train_loader,
+                self.optimizer,
+                self.loss_fn,
+                self.config,
+                scaler=self.scaler,
+                progress_desc=f"Epoch {epoch} [train]",
+            )
 
             val_metrics = None
             if self.val_loader is not None:
-                val_metrics = evaluate(model        = self.model,
-                                       dataloader   = self.val_loader,
-                                       loss_fn      = self.loss_fn,
-                                       device       = self.config.device,
-                                       non_blocking = self.config.non_blocking,
-                                       progress_desc= f"Epoch {epoch} [val]",
-                                      )
+                val_metrics = evaluate(
+                    self.model,
+                    self.val_loader,
+                    self.loss_fn,
+                    self.config.device,
+                    self.config.non_blocking,
+                    progress_desc=f"Epoch {epoch} [val]",
+                )
 
             self._step_scheduler(val_metrics)
             self.history.append(
@@ -412,7 +391,6 @@ class Trainer:
         return self.history
 
     def _step_scheduler(self, val_metrics: Optional[Dict[str, float]]) -> None:
-        """Advance the learning-rate scheduler using validation metrics when required."""
         if self.scheduler is None:
             return
         if isinstance(self.scheduler, ReduceLROnPlateau):
@@ -423,21 +401,23 @@ class Trainer:
             self.scheduler.step()
 
 
-def fit(model     : nn.Module,
-        optimizer : Optimizer,
-        loss_fn   : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-        train_loader: Iterable[Any],
-        config    : TrainingConfig,
-        val_loader: Optional[Iterable[Any]] = None,
-        scheduler : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
-       ) -> list[Dict[str, Any]]:
-    """Convenience helper to instantiate a Trainer and execute training."""
-    trainer = Trainer(model       = model,
-                      optimizer   = optimizer,
-                      loss_fn     = loss_fn,
-                      train_loader= train_loader,
-                      config      = config,
-                      val_loader  = val_loader,
-                      scheduler   = scheduler,
-                     )
+def fit(
+    model: nn.Module,
+    optimizer: Optimizer,
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+    train_loader: Iterable[Any],
+    config: TrainingConfig,
+    val_loader: Optional[Iterable[Any]] = None,
+    scheduler: Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
+) -> list[Dict[str, Any]]:
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        train_loader=train_loader,
+        config=config,
+        val_loader=val_loader,
+        scheduler=scheduler,
+    )
     return trainer.fit()
+

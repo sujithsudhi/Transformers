@@ -1,3 +1,5 @@
+"""Embedding modules used by the foundation transformer."""
+
 from __future__ import annotations
 
 import math
@@ -12,11 +14,9 @@ class TokenEmbedding(nn.Module):
 
     def __init__(self, vocab_size: int, embed_dim: int, padding_idx: Optional[int] = None) -> None:
         super().__init__()
-        self.embedding = nn.Embedding(
-            num_embeddings=vocab_size,
-            embedding_dim=embed_dim,
-            padding_idx=padding_idx,
-        )
+        self.embedding = nn.Embedding(num_embeddings=vocab_size,
+                                      embedding_dim=embed_dim,
+                                      padding_idx=padding_idx,)
 
     def forward(self, tokens: Tensor) -> Tensor:
         return self.embedding(tokens)
@@ -41,3 +41,4 @@ class PositionalEncoding(nn.Module):
         length = x.size(1)
         positional = self.positional_table[:, offset : offset + length]
         return self.dropout(x + positional)
+

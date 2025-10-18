@@ -28,12 +28,7 @@ from src.models import FoundationModelConfig, NeuscenesFoundationModel
 class NeuscenesSceneDataset(Dataset):
     FEATURE_DIM = 3
 
-    """Store scene metadata and fixed sensor ordering.
 
-    Args:
-        scenes: Ordered collection of scene statistics.
-        sensor_index: Mapping from sensor name to tensor position.
-    """
 
     def __init__(self, scenes: List[SceneStats], sensor_index: Dict[str, int]) -> None:
         self.scenes = scenes

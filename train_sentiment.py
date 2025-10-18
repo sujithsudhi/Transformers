@@ -11,31 +11,32 @@ from torch import nn
 
 from data import build_imdb_dataloaders
 
-from models import (
-    FoundationModel,
-    FoundationModelConfig,
-    TrainingConfig,
-    Trainer,
-    evaluate,
-    load_training_config,
-)
+from models import (FoundationModel,
+                    FoundationModelConfig,
+                    TrainingConfig,
+                    Trainer,
+                    evaluate,
+                    load_training_config,)
 
 
+# Function: build_optimizer
+# Description: Construct an AdamW optimizer applying provided hyperparameters.
 def build_optimizer(model: nn.Module,
                     lr: float,
-                    weight_decay: float) -> torch.optim.Optimizer:
-    """Construct an AdamW optimizer applying provided hyperparameters."""
+                    weight_decay: float,
+                   ) -> torch.optim.Optimizer:
     return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 
+# Function: build_loss
+# Description: Return the BCEWithLogitsLoss for binary sentiment targets.
 def build_loss() -> nn.Module:
-    """Return the BCEWithLogitsLoss for binary sentiment targets."""
     return nn.BCEWithLogitsLoss()
 
 
-def maybe_save_history(history: list[Dict[str, Any]],
-                       path: Optional[Path]) -> None:
-    """Persist training history JSON if an output path is provided."""
+# Function: maybe_save_history
+# Description: Persist training history JSON if an output path is provided.
+def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
     if path is None:
         return
     resolved = path.expanduser().resolve()
@@ -45,9 +46,9 @@ def maybe_save_history(history: list[Dict[str, Any]],
     print(f"Training history written to {resolved}")
 
 
-def maybe_plot_history(history: list[Dict[str, Any]],
-                       path: Optional[Path]) -> None:
-    """Render training/validation loss curves when matplotlib is available."""
+# Function: maybe_plot_history
+# Description: Render training/validation loss curves when matplotlib is available.
+def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
     if path is None or not history:
         return
     try:
@@ -91,8 +92,9 @@ def maybe_plot_history(history: list[Dict[str, Any]],
     print(f"Training curve plotted to {resolved}")
 
 
+# Function: load_config_target
+# Description: Import and instantiate a configuration object referenced by string.
 def load_config_target(target: str) -> Any:
-    """Import and instantiate a configuration object referenced by string."""
     if not target:
         raise ValueError("Configuration target string cannot be empty.")
     if ":" in target:
@@ -106,8 +108,9 @@ def load_config_target(target: str) -> Any:
     return attr
 
 
+# Function: main
+# Description: Orchestrate configuration loading, dataloader creation, and training.
 def main() -> None:
-    """Orchestrate configuration loading, dataloaders, and IMDB training."""
     torch.manual_seed(42)
 
     app_config = load_config_target("configs.imdb:IMDBConfig")
@@ -139,22 +142,22 @@ def main() -> None:
 
     training_config = load_training_config(
         {
-            "epochs": training_cfg.epochs,
-            "device": training_cfg.device,
-            "gradient_clip_norm": training_cfg.gradient_clip_norm,
+            "epochs"                     : training_cfg.epochs,
+            "device"                     : training_cfg.device,
+            "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
             "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
-            "use_amp": training_cfg.use_amp,
-            "log_interval": training_cfg.log_interval,
-            "non_blocking": training_cfg.non_blocking,
+            "use_amp"                    : training_cfg.use_amp,
+            "log_interval"               : training_cfg.log_interval,
+            "non_blocking"               : training_cfg.non_blocking,
         }
     )
 
-    trainer = Trainer(model=model,
-                      optimizer=optimizer,
-                      loss_fn=loss_fn,
-                      train_loader=train_loader,
-                      config=training_config,
-                      val_loader=None,
+    trainer = Trainer(model       = model,
+                      optimizer   = optimizer,
+                      loss_fn     = loss_fn,
+                      train_loader= train_loader,
+                      config      = training_config,
+                      val_loader  = None,
                      )
     history = trainer.fit()
 
@@ -167,7 +170,7 @@ def main() -> None:
                            )
 
     history_path = getattr(app_config, "history_path", None)
-    plot_path = getattr(app_config, "plot_path", None)
+    plot_path    = getattr(app_config, "plot_path", None)
 
     maybe_save_history(history, history_path)
     maybe_plot_history(history, plot_path)
