@@ -18,10 +18,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.core import Trainer, evaluate, load_training_config
+from models.core import Trainer, evaluate, load_training_config
 from src.datasets import load_neuscenes_metadata, split_neuscenes
 from src.datasets.neuscenes import NeuscenesMetadata, SceneStats
-from src.models import FoundationModelConfig, NeuscenesFoundationModel
+from models.models import FoundationModelConfig, NeuscenesFoundationModel
 
 
 """Dataset converting Neuscenes scene aggregates into tensor features."""
