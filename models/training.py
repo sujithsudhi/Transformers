@@ -284,10 +284,10 @@ def train_one_epoch(model        : nn.Module,
         optimizer.zero_grad(set_to_none=True)
 
     return {
-        "loss": total_loss / max(total_steps, 1),
-        "loss_sum": total_loss,
-        "batches": total_steps,
-        "examples": total_examples,
+        "loss"     : total_loss / max(total_steps, 1),
+        "loss_sum" : total_loss,
+        "batches"  : total_steps,
+        "examples" : total_examples,
     }
 
 
@@ -326,10 +326,10 @@ def evaluate(
                 progress_bar.close()
 
     return {
-        "loss": total_loss / max(total_steps, 1),
-        "loss_sum": total_loss,
-        "batches": total_steps,
-        "examples": total_examples,
+        "loss"     : total_loss / max(total_steps, 1),
+        "loss_sum" : total_loss,
+        "batches"  : total_steps,
+        "examples" : total_examples,
     }
 
 

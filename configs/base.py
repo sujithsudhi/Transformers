@@ -63,11 +63,11 @@ class BaseDatasetConfig:
 
     def as_dict(self) -> Dict[str, object]:
         return {
-            "dataset_root": self.dataset_root,
-            "metadata_file": self.metadata_file,
-            "splits": dict(self.splits),
-            "shuffle": self.shuffle,
-            "seed": self.seed,
+            "dataset_root"  : self.dataset_root,
+            "metadata_file" : self.metadata_file,
+            "splits"        : dict(self.splits),
+            "shuffle"       : self.shuffle,
+            "seed"          : self.seed,
         }
 
 
@@ -81,9 +81,9 @@ class BaseDataloaderConfig:
 
     def as_dict(self) -> Dict[str, object]:
         return {
-            "batch_size": self.batch_size,
-            "num_workers": self.num_workers,
-            "pin_memory": self.pin_memory,
+            "batch_size"  : self.batch_size,
+            "num_workers" : self.num_workers,
+            "pin_memory"  : self.pin_memory,
         }
 
 
@@ -98,10 +98,10 @@ class BaseOptimizerConfig:
 
     def as_dict(self) -> Dict[str, object]:
         return {
-            "name": self.name,
-            "lr": self.lr,
-            "weight_decay": self.weight_decay,
-            "betas": self.betas,
+            "name"         : self.name,
+            "lr"           : self.lr,
+            "weight_decay" : self.weight_decay,
+            "betas"        : self.betas,
         }
 
 
@@ -113,7 +113,10 @@ class BaseLossConfig:
     beta : float = 1.0
 
     def as_dict(self) -> Dict[str, object]:
-        return {"name": self.name, "beta": self.beta}
+        return {
+            "name" : self.name,
+            "beta" : self.beta,
+        }
 
 
 @dataclass(frozen=True)

@@ -75,7 +75,9 @@ class IMDBLossConfig(BaseLossConfig):
     name : str = "bcewithlogits"
 
     def as_dict(self) -> Dict[str, object]:
-        return {"name": self.name}
+        return {
+            "name" : self.name,
+        }
 
 
 @dataclass(frozen=True)

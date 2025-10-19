@@ -84,10 +84,10 @@ class TransformersOptimizerConfig(BaseOptimizerConfig):
 
     def as_dict(self) -> Dict[str, object]:
         return {
-            "name": self.name,
-            "lr": self.lr,
-            "weight_decay": self.weight_decay,
-            "betas": self.betas,
+            "name"         : self.name,
+            "lr"           : self.lr,
+            "weight_decay" : self.weight_decay,
+            "betas"        : self.betas,
         }
 
 
@@ -99,7 +99,10 @@ class TransformersLossConfig(BaseLossConfig):
     beta : float = 1.0
 
     def as_dict(self) -> Dict[str, object]:
-        return {"name": self.name, "beta": self.beta}
+        return {
+            "name" : self.name,
+            "beta" : self.beta,
+        }
 
 
 @dataclass(frozen=True)
