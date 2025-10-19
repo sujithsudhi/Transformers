@@ -12,7 +12,8 @@ Transformers/
 ├── models/              # Transformer backbone + training utilities
 ├── scene_data/          # Scene metadata helpers (legacy research demos)
 ├── scripts/             # Extended training scripts (e.g., generic scene workflow)
-├── deploy/              # Export + inference helpers (ONNX, TensorRT, Triton)
+├── tool/deploy/         # Export + inference helpers (ONNX, TensorRT, Triton)
+├── viz/                 # Plotting utilities for training/eval metrics
 ├── results/             # Persisted metrics and plots
 ├── requirements.txt     # Python dependencies
 ├── train_sentiment.py   # IMDB training entry-point
@@ -57,15 +58,20 @@ helpers live in `scene_data/`.
 
 ## Deployment
 
-The `deploy/` directory hosts export and inference scripts:
+The `tool/deploy/` directory hosts export and inference scripts:
 
 - `onnx_export.py` — load a PyTorch checkpoint and export to ONNX (optionally TFLite).
 - `infer_onnx_ort_trt.py` — quick inference harness using ONNX Runtime with TensorRT/CUDA.
 - `build_trt_engine.sh` / `infer_trt_engine.py` — build and run TensorRT engines via `trtexec`.
 - `triton/` — Triton Inference Server scaffolding. Drop the exported ONNX model into
-  `deploy/triton/model_repository/bert_sst2/1/model.onnx` and launch Triton via
-  `deploy/triton/run_triton_jetson.sh`.
+  `tool/deploy/triton/model_repository/bert_sst2/1/model.onnx` and launch Triton via
+  `tool/deploy/triton/run_triton_jetson.sh`.
 - `tokenizer/` — store tokenizer assets alongside exported models.
+
+## Visualisation
+
+Use helpers in `viz/` (e.g., `viz.plots.plot_loss_curves`) to quickly chart loss curves,
+confusion matrices, or prediction distributions during evaluation notebooks or scripts.
 
 ## Customisation
 

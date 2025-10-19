@@ -13,8 +13,8 @@ if [[ -z "${TRITON_IMAGE:-}" ]]; then
   exit 1
 fi
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MODEL_REPO="${REPO_ROOT}/deploy/triton/model_repository"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+MODEL_REPO="${REPO_ROOT}/tool/deploy/triton/model_repository"
 
 docker run --rm -it \
   --gpus all \
