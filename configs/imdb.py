@@ -6,74 +6,73 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
-from .base import (
-    AppConfig,
-    BaseDataConfig,
-    BaseDatasetConfig,
-    BaseDataloaderConfig,
-    BaseLossConfig,
-    BaseModelConfig,
-    BaseOptimizerConfig,
-    BaseTrainingConfig,
-)
+from .base import (AppConfig,
+                   BaseDataConfig,
+                   BaseDatasetConfig,
+                   BaseDataloaderConfig,
+                   BaseLossConfig,
+                   BaseModelConfig,
+                   BaseOptimizerConfig,
+                   BaseTrainingConfig,
+                  )
 
 
 @dataclass(frozen=True)
 class IMDBDataConfig(BaseDataConfig):
     """Data loading parameters for the IMDB sentiment dataset."""
 
-    cache_dir: Path = Path("data/cache/imdb")
-    batch_size: int = 32
-    max_tokens: int = 256
-    num_workers: int = 0
-    dataset_name: str = "imdb"
-    dataset_root: Path = Path("data/imdb")
+    cache_dir    : Path = Path("data/cache/imdb")
+    batch_size   : int  = 32
+    max_tokens   : int  = 256
+    num_workers  : int  = 0
+    dataset_name : str  = "imdb"
+    dataset_root : Path = Path("data/imdb")
 
 
 @dataclass(frozen=True)
 class IMDBModelConfig(BaseModelConfig):
     """TransformersModel hyperparameters tuned for IMDB classification."""
 
-    embed_dim: int = 128
-    depth: int = 4
-    num_heads: int = 4
-    mlp_ratio: float = 2.0
-    cls_head_dim: int = 128
-    num_outputs: int = 1
+    embed_dim    : int   = 128
+    depth        : int   = 4
+    num_heads    : int   = 4
+    mlp_ratio    : float = 2.0
+    cls_head_dim : int   = 128
+    num_outputs  : int   = 1
 
 
 @dataclass(frozen=True)
 class IMDBTrainingConfig(BaseTrainingConfig):
     """Training loop defaults for IMDB sentiment fine-tuning."""
 
-    epochs: int = 5
-    lr: float = 3e-4
-    weight_decay: float = 0.01
+    epochs       : int   = 5
+    lr           : float = 3e-4
+    weight_decay : float = 0.01
 
 
 @dataclass(frozen=True)
 class IMDBDataloaderConfig(BaseDataloaderConfig):
     """Torch DataLoader parameters for IMDB sentences."""
 
-    batch_size: int = 32
-    num_workers: int = 2
-    pin_memory: bool = True
+    batch_size  : int  = 32
+    num_workers : int  = 2
+    pin_memory  : bool = True
 
 
 @dataclass(frozen=True)
 class IMDBOptimizerConfig(BaseOptimizerConfig):
     """Optimizer configuration tuned for binary sentiment targets."""
 
-    name: str = "adamw"
-    lr: float = 2e-4
-    weight_decay: float = 0.01
+    name         : str   = "adamw"
+    lr           : float = 2e-4
+    weight_decay : float = 0.01
 
 
 @dataclass(frozen=True)
 class IMDBLossConfig(BaseLossConfig):
     """Loss specification for binary sentiment classification."""
 
-    name: str = "bcewithlogits"
+    name : str = "bcewithlogits"
 
     def as_dict(self) -> Dict[str, object]:
         return {"name": self.name}
@@ -83,12 +82,12 @@ class IMDBLossConfig(BaseLossConfig):
 class IMDBConfig(AppConfig):
     """Application config describing IMDB sentiment fine-tuning."""
 
-    name: str = "imdb"
-    data: IMDBDataConfig = field(default_factory=IMDBDataConfig)
-    model: IMDBModelConfig = field(default_factory=IMDBModelConfig)
-    training: IMDBTrainingConfig = field(default_factory=IMDBTrainingConfig)
-    dataloader: IMDBDataloaderConfig = field(default_factory=IMDBDataloaderConfig)
-    optimizer: IMDBOptimizerConfig = field(default_factory=IMDBOptimizerConfig)
-    loss: IMDBLossConfig = field(default_factory=IMDBLossConfig)
-    history_path: Path = Path("results/imdb_history.json")
-    plot_path: Path = Path("results/imdb_history.png")
+    name         : str                 = "imdb"
+    data         : IMDBDataConfig      = field(default_factory=IMDBDataConfig)
+    model        : IMDBModelConfig     = field(default_factory=IMDBModelConfig)
+    training     : IMDBTrainingConfig  = field(default_factory=IMDBTrainingConfig)
+    dataloader   : IMDBDataloaderConfig = field(default_factory=IMDBDataloaderConfig)
+    optimizer    : IMDBOptimizerConfig = field(default_factory=IMDBOptimizerConfig)
+    loss         : IMDBLossConfig      = field(default_factory=IMDBLossConfig)
+    history_path : Path                = Path("results/imdb_history.json")
+    plot_path    : Path                = Path("results/imdb_history.png")
