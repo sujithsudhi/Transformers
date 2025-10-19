@@ -20,16 +20,25 @@ except ImportError:  # pragma: no cover - tqdm is optional
     tqdm = None  # type: ignore
 
 
-_TRAINING_DEFAULTS: Dict[str, Any] = {"epochs": 5,
-                                      "device": "auto",
-                                      "gradient_clip_norm": None,
-                                      "gradient_accumulation_steps": 1,
-                                      "use_amp": "auto",
-                                      "log_interval": 50,
-                                      "non_blocking": True,
-                                    }
+_TRAINING_DEFAULTS: Dict[str, Any] = {
+    "epochs"                       : 5,
+    "device"                       : "auto",
+    "gradient_clip_norm"           : None,
+    "gradient_accumulation_steps"  : 1,
+    "use_amp"                      : "auto",
+    "log_interval"                 : 50,
+    "non_blocking"                 : True,
+}
 
 
+''' Function: _resolve_bool
+    Description: Convert various input types to boolean value with auto-detection support.
+    Args:
+        value   : Input value to convert.
+        default : Default boolean value if auto is specified.
+    Returns:
+        Resolved boolean value.
+'''
 def _resolve_bool(value: Any, default: bool) -> bool:
     if value is None:
         return default
@@ -46,6 +55,13 @@ def _resolve_bool(value: Any, default: bool) -> bool:
     return bool(value)
 
 
+''' Function: _resolve_device
+    Description: Resolve device string with automatic CUDA detection.
+    Args:
+        value : Device specification string or object.
+    Returns:
+        Resolved device string ('cuda' or 'cpu').
+'''
 def _resolve_device(value: Any) -> str:
     if value is None:
         value = "auto"
@@ -57,6 +73,14 @@ def _resolve_device(value: Any) -> str:
     return str(value)
 
 
+''' Function: _resolve_positive_int
+    Description: Convert value to positive integer with minimum bound of 1.
+    Args:
+        value   : Input value to convert.
+        default : Default value if input is None.
+    Returns:
+        Positive integer value.
+'''
 def _resolve_positive_int(value: Any, default: int) -> int:
     candidate = default if value is None else int(value)
     return max(1, candidate)
@@ -111,13 +135,13 @@ def _default_non_blocking() -> bool:
 
 @dataclass
 class TrainingConfig:
-    epochs: int = field(default_factory=_default_epochs)
-    device: str = field(default_factory=_default_device)
-    gradient_clip_norm: float | None = field(default_factory=_default_gradient_clip_norm)
-    gradient_accumulation_steps: int = field(default_factory=_default_gradient_accumulation_steps)
-    use_amp: bool | str | None = field(default_factory=_default_use_amp)  # type: ignore[assignment]
-    log_interval: int = field(default_factory=_default_log_interval)
-    non_blocking: bool = field(default_factory=_default_non_blocking)
+    epochs                       : int                = field(default_factory=_default_epochs)
+    device                       : str                = field(default_factory=_default_device)
+    gradient_clip_norm           : float | None       = field(default_factory=_default_gradient_clip_norm)
+    gradient_accumulation_steps  : int                = field(default_factory=_default_gradient_accumulation_steps)
+    use_amp                      : bool | str | None  = field(default_factory=_default_use_amp)  # type: ignore[assignment]
+    log_interval                 : int                = field(default_factory=_default_log_interval)
+    non_blocking                 : bool               = field(default_factory=_default_non_blocking)
 
     def __post_init__(self) -> None:
         self.epochs = _resolve_positive_int(self.epochs, 5)
@@ -148,18 +172,28 @@ def load_training_config(
         with resolved.open("r", encoding="utf-8") as handle:
             payload = dict(_TRAINING_DEFAULTS)
             payload.update(json.load(handle))
-    valid_keys = {"epochs",
-                 "device",
-                 "gradient_clip_norm",
-                 "gradient_accumulation_steps",
-                 "use_amp",
-                 "log_interval",
-                 "non_blocking",
+    valid_keys = {
+        "epochs",
+        "device",
+        "gradient_clip_norm",
+        "gradient_accumulation_steps",
+        "use_amp",
+        "log_interval",
+        "non_blocking",
     }
     kwargs = {key: payload.get(key) for key in valid_keys}
     return TrainingConfig(**kwargs)
 
 
+''' Function: _move_to_device
+    Description: Recursively move batch data to specified device.
+    Args:
+        batch        : Batch data (tensor, dict, list, or tuple).
+        device       : Target device for data.
+        non_blocking : Whether to use non-blocking transfer.
+    Returns:
+        Batch data on target device.
+'''
 def _move_to_device(batch: Any, device: torch.device, non_blocking: bool) -> Any:
     if isinstance(batch, torch.Tensor):
         return batch.to(device, non_blocking=non_blocking)
@@ -212,13 +246,13 @@ def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], O
     return bar, bar
 
 
-def train_one_epoch(model        : nn.Module,
-                    dataloader   : Iterable[Any],
-                    optimizer    : Optimizer,
-                    loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-                    config       : TrainingConfig,
-                    scaler       : Optional[GradScaler] = None,
-                    progress_desc: Optional[str] = None,
+def train_one_epoch(model         : nn.Module,
+                    dataloader    : Iterable[Any],
+                    optimizer     : Optimizer,
+                    loss_fn       : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+                    config        : TrainingConfig,
+                    scaler        : Optional[GradScaler] = None,
+                    progress_desc : Optional[str] = None,
                    ) -> Dict[str, float]:
     
     device = torch.device(config.device)
@@ -291,14 +325,25 @@ def train_one_epoch(model        : nn.Module,
     }
 
 
-def evaluate(
-    model: nn.Module,
-    dataloader: Iterable[Any],
-    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-    device: str | torch.device,
-    non_blocking: bool = True,
-    progress_desc: Optional[str] = None,
-) -> Dict[str, float]:
+''' Function: evaluate
+    Description: Evaluate model on validation/test data without gradient computation.
+    Args:
+        model         : Neural network model to evaluate.
+        dataloader    : Evaluation data iterator.
+        loss_fn       : Loss function for computing evaluation loss.
+        device        : Device for model and data.
+        non_blocking  : Whether to use non-blocking data transfer.
+        progress_desc : Description for progress bar display.
+    Returns:
+        Dictionary with evaluation metrics (loss, examples, batches).
+'''
+def evaluate(model         : nn.Module,
+             dataloader    : Iterable[Any],
+             loss_fn       : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+             device        : str | torch.device,
+             non_blocking  : bool = True,
+             progress_desc : Optional[str] = None,
+            ) -> Dict[str, float]:
     device = torch.device(device)
     model.to(device)
     model.eval()
@@ -334,16 +379,28 @@ def evaluate(
 
 
 class Trainer:
-    def __init__(
-        self,
-        model: nn.Module,
-        optimizer: Optimizer,
-        loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-        train_loader: Iterable[Any],
-        config: TrainingConfig,
-        val_loader: Optional[Iterable[Any]] = None,
-        scheduler: Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
-    ) -> None:
+    ''' Function: __init__
+        Description: Initialize trainer with model, optimizer, and training components.
+        Args:
+            model        : Neural network model to train.
+            optimizer    : Optimizer for parameter updates.
+            loss_fn      : Loss function for training.
+            train_loader : Training data loader.
+            config       : Training configuration.
+            val_loader   : Optional validation data loader.
+            scheduler    : Optional learning rate scheduler.
+        Returns:
+            None
+    '''
+    def __init__(self,
+                 model        : nn.Module,
+                 optimizer    : Optimizer,
+                 loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+                 train_loader : Iterable[Any],
+                 config       : TrainingConfig,
+                 val_loader   : Optional[Iterable[Any]] = None,
+                 scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
+                ) -> None:
         self.model = model.to(torch.device(config.device))
         self.optimizer = optimizer
         self.loss_fn = loss_fn
@@ -354,6 +411,13 @@ class Trainer:
         self.scaler = GradScaler(enabled=config.use_amp and torch.cuda.is_available())
         self.history: list[Dict[str, Any]] = []
 
+    ''' Function: fit
+        Description: Train model for configured number of epochs with validation.
+        Args:
+            None
+        Returns:
+            List of dictionaries containing training history per epoch.
+    '''
     def fit(self) -> list[Dict[str, Any]]:
 
         for epoch in range(1, self.config.epochs + 1):
@@ -363,33 +427,37 @@ class Trainer:
                                             self.optimizer,
                                             self.loss_fn,
                                             self.config,
-                                            scaler=self.scaler,
-                                            progress_desc=f"[train]",
-                                          )
+                                            scaler        = self.scaler,
+                                            progress_desc = f"[train]",
+                                           )
 
             val_metrics = None
             if self.val_loader is not None:
-                val_metrics = evaluate(
-                    self.model,
-                    self.val_loader,
-                    self.loss_fn,
-                    self.config.device,
-                    self.config.non_blocking,
-                    progress_desc=f"Epoch {epoch} [val]",
-                )
+                val_metrics = evaluate(self.model,
+                                       self.val_loader,
+                                       self.loss_fn,
+                                       self.config.device,
+                                       self.config.non_blocking,
+                                       progress_desc = f"Epoch {epoch} [val]",
+                                      )
 
             self._step_scheduler(val_metrics)
-            self.history.append(
-                {
-                    "epoch": epoch,
-                    "train": train_metrics,
-                    "val": val_metrics,
-                    "lr": self.optimizer.param_groups[0]["lr"],
-                }
-            )
+            self.history.append({
+                "epoch" : epoch,
+                "train" : train_metrics,
+                "val"   : val_metrics,
+                "lr"    : self.optimizer.param_groups[0]["lr"],
+            })
 
         return self.history
 
+    ''' Function: _step_scheduler
+        Description: Step learning rate scheduler based on validation metrics.
+        Args:
+            val_metrics : Optional validation metrics dictionary.
+        Returns:
+            None
+    '''
     def _step_scheduler(self, val_metrics: Optional[Dict[str, float]]) -> None:
         if self.scheduler is None:
             return
@@ -401,23 +469,34 @@ class Trainer:
             self.scheduler.step()
 
 
-def fit(
-    model: nn.Module,
-    optimizer: Optimizer,
-    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-    train_loader: Iterable[Any],
-    config: TrainingConfig,
-    val_loader: Optional[Iterable[Any]] = None,
-    scheduler: Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
-) -> list[Dict[str, Any]]:
-    trainer = Trainer(
-        model=model,
-        optimizer=optimizer,
-        loss_fn=loss_fn,
-        train_loader=train_loader,
-        config=config,
-        val_loader=val_loader,
-        scheduler=scheduler,
-    )
+''' Function: fit
+    Description: Convenience function to train model using Trainer class.
+    Args:
+        model        : Neural network model to train.
+        optimizer    : Optimizer for parameter updates.
+        loss_fn      : Loss function for training.
+        train_loader : Training data loader.
+        config       : Training configuration.
+        val_loader   : Optional validation data loader.
+        scheduler    : Optional learning rate scheduler.
+    Returns:
+        List of dictionaries containing training history per epoch.
+'''
+def fit(model        : nn.Module,
+        optimizer    : Optimizer,
+        loss_fn      : Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        train_loader : Iterable[Any],
+        config       : TrainingConfig,
+        val_loader   : Optional[Iterable[Any]] = None,
+        scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
+       ) -> list[Dict[str, Any]]:
+    trainer = Trainer(model        = model,
+                      optimizer    = optimizer,
+                      loss_fn      = loss_fn,
+                      train_loader = train_loader,
+                      config       = config,
+                      val_loader   = val_loader,
+                      scheduler    = scheduler,
+                     )
     return trainer.fit()
 

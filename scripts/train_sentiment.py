@@ -28,14 +28,25 @@ def build_optimizer(model: nn.Module,
     return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 
-# Function: build_loss
-# Description: Return the BCEWithLogitsLoss for binary sentiment targets.
+''' Function: build_loss
+    Description: Return the BCEWithLogitsLoss for binary sentiment targets.
+    Args:
+        None
+    Returns:
+        BCEWithLogitsLoss module for binary classification.
+'''
 def build_loss() -> nn.Module:
     return nn.BCEWithLogitsLoss()
 
 
-# Function: maybe_save_history
-# Description: Persist training history JSON if an output path is provided.
+''' Function: maybe_save_history
+    Description: Persist training history JSON if an output path is provided.
+    Args:
+        history : List of training history dictionaries per epoch.
+        path    : Optional file path for saving JSON.
+    Returns:
+        None
+'''
 def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
     if path is None:
         return
@@ -46,8 +57,14 @@ def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training history written to {resolved}")
 
 
-# Function: maybe_plot_history
-# Description: Render training/validation loss curves when matplotlib is available.
+''' Function: maybe_plot_history
+    Description: Render training/validation loss curves when matplotlib is available.
+    Args:
+        history : List of training history dictionaries.
+        path    : Optional file path for saving plot image.
+    Returns:
+        None
+'''
 def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
     if path is None or not history:
         return
@@ -92,8 +109,13 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training curve plotted to {resolved}")
 
 
-# Function: load_config_target
-# Description: Import and instantiate a configuration object referenced by string.
+''' Function: load_config_target
+    Description: Import and instantiate a configuration object referenced by string.
+    Args:
+        target : Python module path with attribute (e.g., 'module:ClassName').
+    Returns:
+        Loaded configuration object or instance.
+'''
 def load_config_target(target: str) -> Any:
     if not target:
         raise ValueError("Configuration target string cannot be empty.")
@@ -108,8 +130,13 @@ def load_config_target(target: str) -> Any:
     return attr
 
 
-# Function: main
-# Description: Orchestrate configuration loading, dataloader creation, and training.
+''' Function: main
+    Description: Orchestrate configuration loading, dataloader creation, and training.
+    Args:
+        None
+    Returns:
+        None
+'''
 def main() -> None:
     torch.manual_seed(42)
 

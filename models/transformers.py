@@ -11,18 +11,25 @@ from .core import PositionalEncoding, TransformerEncoderLayer
 
 @dataclass
 class TransformersModelConfig:
-    input_dim: int
-    embed_dim: int = 256
-    depth: int = 6
-    num_heads: int = 8
-    mlp_ratio: float = 4.0
-    dropout: float = 0.1
-    attention_dropout: float = 0.1
-    use_cls_token: bool = True
-    cls_head_dim: Optional[int] = None
-    num_outputs: int = 1
-    pooling: str = "cls"
+    input_dim         : int
+    embed_dim         : int           = 256
+    depth             : int           = 6
+    num_heads         : int           = 8
+    mlp_ratio         : float         = 4.0
+    dropout           : float         = 0.1
+    attention_dropout : float         = 0.1
+    use_cls_token     : bool          = True
+    cls_head_dim      : Optional[int] = None
+    num_outputs       : int           = 1
+    pooling           : str           = "cls"
 
+    ''' Function: __post_init__
+        Description: Validate configuration parameters after initialization.
+        Args:
+            None
+        Returns:
+            None
+    '''
     def __post_init__(self) -> None:
         if self.pooling not in {"cls", "mean"}:
             raise ValueError("pooling must be either 'cls' or 'mean'.")
@@ -34,21 +41,28 @@ class TransformersModelConfig:
 
 class TransformersModel(nn.Module):
     """Transformer backbone producing review representations."""
+    ''' Function: __init__
+        Description: Initialize transformer model with configuration.
+        Args:
+            config : Model configuration specifying architecture parameters.
+        Returns:
+            None
+    '''
     def __init__(self, config: TransformersModelConfig) -> None:
         super().__init__()
         self.config = config
 
         self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
         self.position = PositionalEncoding(config.embed_dim,
-                                           dropout=config.dropout)
+                                           dropout = config.dropout,
+                                          )
         self.encoder = nn.ModuleList(
-            TransformerEncoderLayer(
-                embed_dim         = config.embed_dim,
-                num_heads         = config.num_heads,
-                mlp_ratio         = config.mlp_ratio,
-                dropout           = config.dropout,
-                attention_dropout = config.attention_dropout,
-            )
+            TransformerEncoderLayer(embed_dim         = config.embed_dim,
+                                    num_heads         = config.num_heads,
+                                    mlp_ratio         = config.mlp_ratio,
+                                    dropout           = config.dropout,
+                                    attention_dropout = config.attention_dropout,
+                                   )
             for _ in range(config.depth)
         )
         self.norm = nn.LayerNorm(config.embed_dim)
@@ -71,8 +85,14 @@ class TransformersModel(nn.Module):
 
         self.apply(self._init_weights)
 
+    ''' Function: _init_weights
+        Description: Initialise module weights following transformer conventions.
+        Args:
+            module : Neural network module to initialize.
+        Returns:
+            None
+    '''
     def _init_weights(self, module: nn.Module) -> None:
-        """Initialise module weights following transformer conventions."""
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std=0.02)
             if module.bias is not None:
@@ -81,9 +101,18 @@ class TransformersModel(nn.Module):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
+    ''' Function: forward_features
+        Description: Produce pooled latent features prior to the classification head.
+        Args:
+            inputs : Input token feature tensor.
+            mask   : Optional attention mask for padding tokens.
+        Returns:
+            Pooled feature representation tensor.
+    '''
     def forward_features(self,
-                         inputs: Tensor,
-                         mask  : Optional[Tensor] = None) -> Tensor:
+                         inputs : Tensor,
+                         mask   : Optional[Tensor] = None,
+                        ) -> Tensor:
         """Produce pooled latent features prior to the classification head."""
         x = self.input_proj(inputs)
         batch_size = x.size(0)
@@ -116,10 +145,20 @@ class TransformersModel(nn.Module):
             return (tokens * mask_tokens.unsqueeze(-1)).sum(dim=1) / lengths
         return tokens.mean(dim=1)
 
+    ''' Function: forward
+        Description: Execute the full model pipeline and return prediction logits.
+        Args:
+            inputs : Input token feature tensor.
+            mask   : Optional attention mask for padding tokens.
+        Returns:
+            Output logits tensor.
+    '''
     def forward(self,
-                inputs: Tensor,
-                mask  : Optional[Tensor] = None) -> Tensor:
+                inputs : Tensor,
+                mask   : Optional[Tensor] = None,
+               ) -> Tensor:
         """Execute the full model pipeline and return prediction logits."""
         features = self.forward_features(inputs,
-                                         mask)
+                                         mask,
+                                        )
         return self.head(features)

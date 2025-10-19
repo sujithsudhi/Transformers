@@ -18,6 +18,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from models import TransformersModel, TransformersModelConfig  # noqa: E402
 
 
+''' Function: _load_config
+    Description: Load configuration from Python module path or attribute reference.
+    Args:
+        target : Python path to config (e.g., 'module:ClassName' or 'module.attr').
+    Returns:
+        Loaded configuration object or instance.
+'''
 def _load_config(target: str) -> Any:
     if ":" in target:
         module_name, attr_name = target.split(":", 1)
@@ -28,6 +35,14 @@ def _load_config(target: str) -> Any:
     return attr() if isinstance(attr, type) else attr
 
 
+''' Function: _resolve_model_config
+    Description: Extract and validate model configuration from application config.
+    Args:
+        app_config : Application configuration object.
+        input_dim  : Optional input dimension override.
+    Returns:
+        Validated TransformersModelConfig instance.
+'''
 def _resolve_model_config(app_config: Any, input_dim: int | None) -> TransformersModelConfig:
     raw_config = app_config.model
     payload: Dict[str, Any] = {}
@@ -47,6 +62,14 @@ def _resolve_model_config(app_config: Any, input_dim: int | None) -> Transformer
     return TransformersModelConfig(**payload)
 
 
+''' Function: _load_checkpoint
+    Description: Load model weights from checkpoint file.
+    Args:
+        model           : TransformersModel instance to load weights into.
+        checkpoint_path : Path to checkpoint file (.pt).
+    Returns:
+        None
+'''
 def _load_checkpoint(model: TransformersModel, checkpoint_path: Path) -> None:
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     if isinstance(checkpoint, dict):
@@ -59,6 +82,17 @@ def _load_checkpoint(model: TransformersModel, checkpoint_path: Path) -> None:
         raise TypeError("Unsupported checkpoint format; expected dict with state_dict.")
 
 
+''' Function: _export_to_onnx
+    Description: Export TransformersModel to ONNX format with optional dynamic axes.
+    Args:
+        model        : TransformersModel to export.
+        output_path  : Destination path for ONNX file.
+        dummy_input  : Example input tensor for tracing.
+        dynamic_axes : Whether to enable dynamic batch and sequence dimensions.
+        opset        : ONNX opset version to target.
+    Returns:
+        None
+'''
 def _export_to_onnx(model         : TransformersModel,
                     output_path   : Path,
                     dummy_input   : torch.Tensor,
@@ -80,6 +114,14 @@ def _export_to_onnx(model         : TransformersModel,
     print(f"ONNX model exported to {output_path}")
 
 
+''' Function: _export_to_tflite
+    Description: Convert ONNX model to TensorFlow Lite format.
+    Args:
+        onnx_path   : Path to source ONNX model file.
+        tflite_path : Destination path for TFLite model.
+    Returns:
+        None
+'''
 def _export_to_tflite(onnx_path: Path, tflite_path: Path) -> None:
     try:
         import onnx
@@ -105,6 +147,16 @@ def _export_to_tflite(onnx_path: Path, tflite_path: Path) -> None:
     print(f"TFLite model exported to {tflite_path}")
 
 
+''' Function: _build_dummy_input
+    Description: Generate random dummy input tensor for model export.
+    Args:
+        batch_size      : Batch dimension size.
+        sequence_length : Sequence dimension size.
+        input_dim       : Feature dimension size.
+        device          : Device for tensor creation.
+    Returns:
+        Random tensor with specified shape.
+'''
 def _build_dummy_input(batch_size     : int,
                        sequence_length: int,
                        input_dim      : int,
@@ -113,6 +165,13 @@ def _build_dummy_input(batch_size     : int,
     return torch.randn(batch_size, sequence_length, input_dim, device=device)
 
 
+''' Function: parse_args
+    Description: Parse command-line arguments for ONNX export script.
+    Args:
+        None
+    Returns:
+        Parsed argument namespace.
+'''
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export a TransformersModel to ONNX/TFLite.")
     parser.add_argument("--config",
@@ -167,6 +226,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+''' Function: main
+    Description: Main execution function for ONNX export workflow.
+    Args:
+        None
+    Returns:
+        None
+'''
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device)

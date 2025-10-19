@@ -22,18 +22,38 @@ _TOKEN_PATTERN = re.compile(r"\b\w+\b")
 _MAX_TOKEN_LENGTH = 20
 
 
+''' Function: _tokenize
+    Description: Tokenize a review into word-level tokens using regex boundaries.
+    Args:
+        text : Input text string to tokenize.
+    Returns:
+        List of word tokens extracted from text.
+'''
 def _tokenize(text: str) -> List[str]:
-    """Tokenize a review into word-level tokens using regex boundaries."""
     return _TOKEN_PATTERN.findall(text)
 
 
+''' Function: _normalise
+    Description: Normalise a value by its denominator, guarding against division by zero.
+    Args:
+        value       : Numerator value to normalize.
+        denominator : Denominator for normalization.
+    Returns:
+        Normalized value or 0.0 if denominator is non-positive.
+'''
 def _normalise(value: float, denominator: float) -> float:
-    """Normalise a value by its denominator, guarding against division by zero."""
     if denominator <= 0:
         return 0.0
     return value / denominator
 
 
+''' Function: _load_local_split
+    Description: Load IMDB split from local JSONL file.
+    Args:
+        path : Path to JSONL file containing text and label records.
+    Returns:
+        Tuple of text list and label list.
+'''
 def _load_local_split(path: Path) -> Tuple[List[str], List[int]]:
     texts: List[str] = []
     labels: List[int] = []
@@ -45,12 +65,20 @@ def _load_local_split(path: Path) -> Tuple[List[str], List[int]]:
     return texts, labels
 
 
+''' Function: download_imdb_dataset
+    Description: Download the IMDB dataset and materialise JSONL splits under target directory.
+    Args:
+        target_dir   : Directory where dataset splits will be saved.
+        dataset_name : Name of the dataset to download from HuggingFace.
+        overwrite    : Whether to overwrite existing files.
+    Returns:
+        Dictionary mapping split names to file paths.
+'''
 def download_imdb_dataset(
     target_dir: Path = Path("data/imdb"),
     dataset_name: str = "imdb",
     overwrite: bool = False,
 ) -> Dict[str, Path]:
-    """Download the IMDB dataset and materialise JSONL splits under ``target_dir``."""
     target = target_dir.expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
     expected_files = {split: target / f"{split}.jsonl" for split in ("train", "test")}
@@ -74,6 +102,18 @@ class IMDBDataset(Dataset):
 
     FEATURE_DIM = 4
 
+    ''' Function: __init__
+        Description: Load an IMDB split and pre-compute token based features.
+        Args:
+            split        : Dataset split ('train' or 'test').
+            max_tokens   : Maximum number of tokens per review.
+            cache_dir    : Directory for caching downloaded datasets.
+            dataset_name : Name of the dataset to load.
+            dataset_root : Local directory containing JSONL files.
+            download     : Whether to download dataset if not found locally.
+        Returns:
+            None
+    '''
     def __init__(
         self,
         split       : str,
@@ -83,7 +123,6 @@ class IMDBDataset(Dataset):
         dataset_root: Optional[Path] = None,
         download    : bool = True,
     ) -> None:
-        """Load an IMDB split and pre-compute token based features."""
         if split not in {"train", "test"}:
             raise ValueError("IMDBDataset split must be either 'train' or 'test'.")
 
@@ -116,12 +155,24 @@ class IMDBDataset(Dataset):
             self.labels = local_labels
         self.max_tokens = int(max_tokens)
 
+    ''' Function: __len__
+        Description: Return the number of review samples available in the dataset.
+        Args:
+            None
+        Returns:
+            Number of samples in the dataset.
+    '''
     def __len__(self) -> int:
-        """Return the number of review samples available in the dataset."""
         return len(self.texts)
 
+    ''' Function: _encode_token
+        Description: Convert a token into a feature vector capturing character statistics.
+        Args:
+            token : Input token string.
+        Returns:
+            Feature tensor with normalized statistics (length, alpha ratio, digit ratio, bias).
+    '''
     def _encode_token(self, token: str) -> torch.Tensor:
-        """Convert a token into a feature vector capturing character statistics."""
         length = len(token)
         alpha = sum(char.isalpha() for char in token)
         digits = sum(char.isdigit() for char in token)
@@ -131,8 +182,14 @@ class IMDBDataset(Dataset):
         digit_ratio = _normalise(digits, length)
         return torch.tensor([length_norm, alpha_ratio, digit_ratio, 1.0], dtype=torch.float32)
 
+    ''' Function: __getitem__
+        Description: Return padded token features and binary sentiment label for the given index.
+        Args:
+            index : Sample index in the dataset.
+        Returns:
+            Tuple of feature tensor and label tensor.
+    '''
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Return padded token features and binary sentiment label for the given index."""
         text = self.texts[index]
         label = float(self.labels[index])
         tokens = _tokenize(text)[: self.max_tokens]
@@ -143,6 +200,19 @@ class IMDBDataset(Dataset):
         return features, target
 
 
+''' Function: build_imdb_dataloaders
+    Description: Construct train and test dataloaders for IMDB sentiment classification.
+    Args:
+        batch_size   : Number of samples per batch.
+        max_tokens   : Maximum tokens per review.
+        num_workers  : Number of worker processes for data loading.
+        cache_dir    : Directory for caching datasets.
+        dataset_name : Name of the dataset to load.
+        dataset_root : Local directory with JSONL files.
+        download     : Whether to download dataset if not found.
+    Returns:
+        Tuple of train DataLoader and test DataLoader.
+'''
 def build_imdb_dataloaders(
     batch_size : int = 32,
     max_tokens : int = 256,
@@ -152,7 +222,6 @@ def build_imdb_dataloaders(
     dataset_root: Optional[Path] = None,
     download    : bool = True,
 ) -> Tuple[DataLoader, DataLoader]:
-    """Construct train and test dataloaders for IMDB sentiment classification."""
     cache_dir = cache_dir or Path("data/cache")
     cache_dir = cache_dir.expanduser().resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
