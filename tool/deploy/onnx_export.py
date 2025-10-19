@@ -68,17 +68,16 @@ def _export_to_onnx(
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     model.eval()
-    torch.onnx.export(
-        model,
-        dummy_input,
-        output_path,
-        opset_version=opset,
-        input_names=["inputs"],
-        output_names=["logits"],
-        dynamic_axes={"inputs": {0: "batch", 1: "tokens"}, "logits": {0: "batch"}}
-        if dynamic_axes
-        else None,
-    )
+    torch.onnx.export(model,
+                      dummy_input,
+                      output_path,
+                      opset_version = opset,
+                      input_names   = ["inputs"],
+                      output_names  = ["logits"],
+                      dynamic_axes  = {"inputs": {0: "batch", 1: "tokens"}, "logits": {0: "batch"}}
+                                      if dynamic_axes
+                                      else None,
+                     )
     print(f"ONNX model exported to {output_path}")
 
 
@@ -114,65 +113,55 @@ def _build_dummy_input(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export a TransformersModel to ONNX/TFLite.")
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Python path to the AppConfig implementation (e.g. 'configs.imdb:IMDBConfig').",
-    )
-    parser.add_argument(
-        "--checkpoint",
-        type=Path,
-        required=True,
-        help="Path to the fine-tuned model checkpoint (.pt).",
-    )
-    parser.add_argument(
-        "--onnx-out",
-        type=Path,
-        required=True,
-        help="Destination path for the exported ONNX model.",
-    )
-    parser.add_argument(
-        "--tflite-out",
-        type=Path,
-        default=None,
-        help="Optional destination path for TFLite conversion.",
-    )
-    parser.add_argument(
-        "--input-dim",
-        type=int,
-        default=None,
-        help="Dimensionality of each input token feature vector.",
-    )
-    parser.add_argument(
-        "--sequence-length",
-        type=int,
-        default=256,
-        help="Dummy sequence length used during export.",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=1,
-        help="Dummy batch size used during export.",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cpu",
-        help="Device used for export (cpu or cuda).",
-    )
-    parser.add_argument(
-        "--opset",
-        type=int,
-        default=17,
-        help="ONNX opset version to target.",
-    )
-    parser.add_argument(
-        "--no-dynamic-axes",
-        action="store_true",
-        help="Disable dynamic axes in the exported ONNX graph.",
-    )
+    parser.add_argument("--config",
+                        type     = str,
+                        required = True,
+                        help     = "Python path to the AppConfig implementation (e.g. 'configs.imdb:IMDBConfig').",
+                       )
+    parser.add_argument("--checkpoint",
+                        type     = Path,
+                        required = True,
+                        help     = "Path to the fine-tuned model checkpoint (.pt).",
+                       )
+    parser.add_argument("--onnx-out",
+                        type     = Path,
+                        required = True,
+                        help     = "Destination path for the exported ONNX model.",
+                       )
+    parser.add_argument("--tflite-out",
+                        type    = Path,
+                        default = None,
+                        help    = "Optional destination path for TFLite conversion.",
+                       )
+    parser.add_argument("--input-dim",
+                        type    = int,
+                        default = None,
+                        help    = "Dimensionality of each input token feature vector.",
+                       )
+    parser.add_argument("--sequence-length",
+                        type    = int,
+                        default = 256,
+                        help    = "Dummy sequence length used during export.",
+                       )
+    parser.add_argument("--batch-size",
+                        type    = int,
+                        default = 1,
+                        help    = "Dummy batch size used during export.",
+                       )
+    parser.add_argument("--device",
+                        type    = str,
+                        default = "cpu",
+                        help    = "Device used for export (cpu or cuda).",
+                       )
+    parser.add_argument("--opset",
+                        type    = int,
+                        default = 17,
+                        help    = "ONNX opset version to target.",
+                       )
+    parser.add_argument("--no-dynamic-axes",
+                        action = "store_true",
+                        help   = "Disable dynamic axes in the exported ONNX graph.",
+                       )
     return parser.parse_args()
 
 
@@ -185,20 +174,18 @@ def main() -> None:
     model = TransformersModel(model_config).to(device)
     _load_checkpoint(model, args.checkpoint)
 
-    dummy_input = _build_dummy_input(
-        batch_size=args.batch_size,
-        sequence_length=args.sequence_length,
-        input_dim=model_config.input_dim,
-        device=device,
-    )
+    dummy_input = _build_dummy_input(batch_size       = args.batch_size,
+                                      sequence_length = args.sequence_length,
+                                      input_dim       = model_config.input_dim,
+                                      device          = device,
+                                     )
 
-    _export_to_onnx(
-        model,
-        args.onnx_out,
-        dummy_input,
-        dynamic_axes=not args.no_dynamic_axes,
-        opset=args.opset,
-    )
+    _export_to_onnx(model,
+                    args.onnx_out,
+                    dummy_input,
+                    dynamic_axes = not args.no_dynamic_axes,
+                    opset        = args.opset,
+                   )
 
     if args.tflite_out is not None:
         _export_to_tflite(args.onnx_out, args.tflite_out)

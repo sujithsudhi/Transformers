@@ -23,36 +23,31 @@ TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TensorRT engine inference helper.")
-    parser.add_argument(
-        "--engine",
-        type=Path,
-        required=True,
-        help="Path to the TensorRT engine (.plan).",
-    )
-    parser.add_argument(
-        "--input",
-        type=Path,
-        default=None,
-        help="Optional .npy file providing input tensor data.",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=1,
-        help="Batch size for synthetic input if --input is not provided.",
-    )
-    parser.add_argument(
-        "--sequence-length",
-        type=int,
-        default=256,
-        help="Sequence length for synthetic input if --input is not provided.",
-    )
-    parser.add_argument(
-        "--input-dim",
-        type=int,
-        default=4,
-        help="Feature dimension for synthetic input if --input is not provided.",
-    )
+    parser.add_argument("--engine",
+                        type     = Path,
+                        required = True,
+                        help     = "Path to the TensorRT engine (.plan).",
+                       )
+    parser.add_argument("--input",
+                        type    = Path,
+                        default = None,
+                        help    = "Optional .npy file providing input tensor data.",
+                       )
+    parser.add_argument("--batch-size",
+                        type    = int,
+                        default = 1,
+                        help    = "Batch size for synthetic input if --input is not provided.",
+                       )
+    parser.add_argument("--sequence-length",
+                        type    = int,
+                        default = 256,
+                        help    = "Sequence length for synthetic input if --input is not provided.",
+                       )
+    parser.add_argument("--input-dim",
+                        type    = int,
+                        default = 4,
+                        help    = "Feature dimension for synthetic input if --input is not provided.",
+                       )
     return parser.parse_args()
 
 

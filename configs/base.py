@@ -80,11 +80,10 @@ class BaseDataloaderConfig:
     pin_memory  : bool = True
 
     def as_dict(self) -> Dict[str, object]:
-        return {
-            "batch_size"  : self.batch_size,
-            "num_workers" : self.num_workers,
-            "pin_memory"  : self.pin_memory,
-        }
+        return {"batch_size"  : self.batch_size,
+                "num_workers" : self.num_workers,
+                "pin_memory"  : self.pin_memory,
+               }
 
 
 @dataclass(frozen=True)
@@ -97,12 +96,11 @@ class BaseOptimizerConfig:
     betas        : Tuple[float, float] = (0.9, 0.999)
 
     def as_dict(self) -> Dict[str, object]:
-        return {
-            "name"         : self.name,
-            "lr"           : self.lr,
-            "weight_decay" : self.weight_decay,
-            "betas"        : self.betas,
-        }
+        return {"name"         : self.name,
+                "lr"           : self.lr,
+                "weight_decay" : self.weight_decay,
+                "betas"        : self.betas,
+               }
 
 
 @dataclass(frozen=True)
@@ -113,10 +111,9 @@ class BaseLossConfig:
     beta : float = 1.0
 
     def as_dict(self) -> Dict[str, object]:
-        return {
-            "name" : self.name,
-            "beta" : self.beta,
-        }
+        return {"name" : self.name,
+                "beta" : self.beta,
+               }
 
 
 @dataclass(frozen=True)
