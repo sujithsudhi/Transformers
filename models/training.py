@@ -400,6 +400,7 @@ class Trainer:
                  config       : TrainingConfig,
                  val_loader   : Optional[Iterable[Any]] = None,
                  scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
+                 logger       : Optional[Callable[[Dict[str, Any]], None]] = None,
                 ) -> None:
         self.model = model.to(torch.device(config.device))
         self.optimizer = optimizer
@@ -410,6 +411,7 @@ class Trainer:
         self.scheduler = scheduler
         self.scaler = GradScaler(enabled=config.use_amp and torch.cuda.is_available())
         self.history: list[Dict[str, Any]] = []
+        self.logger = logger
 
     ''' Function: fit
         Description: Train model for configured number of epochs with validation.
@@ -442,12 +444,15 @@ class Trainer:
                                       )
 
             self._step_scheduler(val_metrics)
-            self.history.append({
+            record = {
                 "epoch" : epoch,
                 "train" : train_metrics,
                 "val"   : val_metrics,
                 "lr"    : self.optimizer.param_groups[0]["lr"],
-            })
+            }
+            self.history.append(record)
+            if self.logger is not None:
+                self.logger(record)
 
         return self.history
 
@@ -489,6 +494,7 @@ def fit(model        : nn.Module,
         config       : TrainingConfig,
         val_loader   : Optional[Iterable[Any]] = None,
         scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
+        logger       : Optional[Callable[[Dict[str, Any]], None]] = None,
        ) -> list[Dict[str, Any]]:
     trainer = Trainer(model        = model,
                       optimizer    = optimizer,
@@ -497,6 +503,6 @@ def fit(model        : nn.Module,
                       config       = config,
                       val_loader   = val_loader,
                       scheduler    = scheduler,
+                      logger       = logger,
                      )
     return trainer.fit()
-

@@ -11,3 +11,4 @@ jupyterlab==4.1.1
 ipykernel==6.29.3
 tqdm==4.66.2
 datasets==2.16.1
+wandb==0.16.4

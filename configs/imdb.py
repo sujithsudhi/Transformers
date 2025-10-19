@@ -93,3 +93,4 @@ class IMDBConfig(AppConfig):
     loss         : IMDBLossConfig      = field(default_factory=IMDBLossConfig)
     history_path : Path                = Path("results/imdb_history.json")
     plot_path    : Path                = Path("results/imdb_history.png")
+    checkpoint_path: Path              = Path("results/imdb_transformer.pt")

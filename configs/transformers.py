@@ -119,3 +119,4 @@ class TransformersConfig(AppConfig):
     loss         : TransformersLossConfig        = field(default_factory=TransformersLossConfig)
     history_path : Path                          = Path("results/transformers_history.json")
     plot_path    : Path                          = Path("results/transformers_history.png")
+    checkpoint_path: Path                        = Path("results/transformers_model.pt")

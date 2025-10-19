@@ -117,6 +117,27 @@ flowchart LR
 Use helpers in `viz/` (e.g., `viz.plots.plot_loss_curves`) to quickly chart loss curves,
 confusion matrices, or prediction distributions during evaluation notebooks or scripts.
 
+## Experiment Tracking (Weights & Biases)
+
+Training scripts automatically integrate with Weights & Biases when the library is
+installed and a login token is available. To enable tracking:
+
+```bash
+python -m pip install wandb  # already listed in requirements
+export WANDB_API_KEY="<your-api-key>"
+wandb login  # optional alternative to the env variable
+```
+
+Optional environment variables:
+
+- `WANDB_PROJECT` (default: `transformers-imdb`)
+- `WANDB_ENTITY` for team/workspace names
+- `WANDB_NAME` to override the run display name
+
+Each run logs epoch metrics, final test results, the saved checkpoint, and history JSON as
+artifacts for later analysis. Set `WANDB_DISABLED=true` to skip logging without editing the
+code.
+
 ## Customisation
 
 - Modify base defaults in `configs/base.py` and subclass them per application.

@@ -130,3 +130,4 @@ class AppConfig:
     loss         : BaseLossConfig        = field(default_factory=BaseLossConfig)
     history_path : Path                  = Path("results/history.json")
     plot_path    : Path                  = Path("results/history.png")
+    checkpoint_path: Path                = Path("results/model.pt")

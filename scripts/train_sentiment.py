@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+import os
+from dataclasses import asdict, is_dataclass
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -17,6 +18,11 @@ from models import (TransformersModel,
                     Trainer,
                     evaluate,
                     load_training_config,)
+
+try:  # pragma: no cover - optional dependency
+    import wandb
+except ImportError:  # pragma: no cover
+    wandb = None  # type: ignore
 
 
 # Function: build_optimizer
@@ -38,6 +44,53 @@ def build_optimizer(model       : nn.Module,
 '''
 def build_loss() -> nn.Module:
     return nn.BCEWithLogitsLoss()
+
+
+def _to_serializable(obj: Any) -> Any:
+    if is_dataclass(obj):
+        return {k: _to_serializable(v) for k, v in asdict(obj).items()}
+    if isinstance(obj, dict):
+        return {k: _to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_serializable(v) for v in obj]
+    if isinstance(obj, Path):
+        return obj.as_posix()
+    return obj
+
+
+def _init_wandb_run(app_config: Any) -> tuple[Optional["wandb.sdk.wandb_run.Run"], Optional[Any]]:
+    if wandb is None:
+        return None, None
+    if os.getenv("WANDB_DISABLED", "").lower() in {"1", "true", "yes"}:
+        return None, None
+    project = os.getenv("WANDB_PROJECT", "transformers-imdb")
+    entity = os.getenv("WANDB_ENTITY")
+    run_config: Dict[str, Any] = {
+        "data": _to_serializable(app_config.data),
+        "model": _to_serializable(app_config.model),
+        "training": _to_serializable(app_config.training),
+    }
+    dataset_cfg = getattr(app_config, "dataset", None)
+    if dataset_cfg is not None:
+        run_config["dataset"] = _to_serializable(dataset_cfg)
+
+    run = wandb.init(
+        project=project,
+        entity=entity,
+        config=run_config,
+        name=os.getenv("WANDB_NAME"),
+    )
+
+    def log_callback(entry: Dict[str, Any]) -> None:
+        payload: Dict[str, Any] = {"epoch": entry["epoch"], "lr": entry.get("lr")}
+        train_metrics = entry.get("train") or {}
+        payload.update({f"train/{k}": v for k, v in train_metrics.items() if v is not None})
+        val_metrics = entry.get("val")
+        if val_metrics:
+            payload.update({f"val/{k}": v for k, v in val_metrics.items() if v is not None})
+        wandb.log(payload)
+
+    return run, log_callback
 
 
 ''' Function: maybe_save_history
@@ -142,6 +195,7 @@ def main() -> None:
     torch.manual_seed(42)
 
     app_config = load_config_target("configs.imdb:IMDBConfig")
+    wandb_run, wandb_logger = _init_wandb_run(app_config)
 
     # Validate configuration contract before applying overrides.
     if not hasattr(app_config, "data") or not hasattr(app_config, "model"):
@@ -181,12 +235,13 @@ def main() -> None:
                                                      }
                                                     )
 
-    trainer = Trainer(model       = model,
-                      optimizer   = optimizer,
-                      loss_fn     = loss_fn,
-                      train_loader= train_loader,
-                      config      = training_config,
-                      val_loader  = None,
+    trainer = Trainer(model        = model,
+                      optimizer    = optimizer,
+                      loss_fn      = loss_fn,
+                      train_loader = train_loader,
+                      config       = training_config,
+                      val_loader   = None,
+                      logger       = wandb_logger,
                      )
     history = trainer.fit()
 
@@ -198,11 +253,44 @@ def main() -> None:
                             progress_desc="Test",
                            )
 
-    history_path = getattr(app_config, "history_path", None)
-    plot_path    = getattr(app_config, "plot_path", None)
+    history_path   = getattr(app_config, "history_path", None)
+    plot_path      = getattr(app_config, "plot_path", None)
+    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/model.pt")))
 
     maybe_save_history(history, history_path)
     maybe_plot_history(history, plot_path)
+
+    checkpoint_path = checkpoint_path.expanduser().resolve()
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "model_state_dict": trainer.model.state_dict(),
+            "config": {
+                "model": _to_serializable(app_config.model),
+                "training": _to_serializable(app_config.training),
+                "data": _to_serializable(app_config.data),
+            },
+        },
+        checkpoint_path,
+    )
+
+    if wandb_run is not None:
+        wandb.log({f"test/{k}": v for k, v in test_metrics.items()})
+        wandb_run.summary.update({f"test/{k}": v for k, v in test_metrics.items()})
+
+        artifact = wandb.Artifact("transformer-imdb-model", type="model")
+        artifact.add_file(checkpoint_path.as_posix())
+        if history_path is not None:
+            resolved_history = history_path.expanduser().resolve()
+            if resolved_history.exists():
+                artifact.add_file(resolved_history.as_posix())
+        if plot_path is not None:
+            resolved_plot = plot_path.expanduser().resolve()
+            if resolved_plot.exists():
+                wandb.log({"plots/loss": wandb.Image(resolved_plot.as_posix())})
+        wandb_run.log_artifact(artifact)
+        wandb_run.finish()
+
     summary: Dict[str, Any] = {"train_history": history, "test_metrics": test_metrics}
     print(json.dumps(summary, indent=2))
 
