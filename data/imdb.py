@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
-from datasets import load_dataset
 from torch.utils.data import DataLoader, Dataset
+
+try:
+    from datasets import load_dataset
+except ImportError as exc:  # pragma: no cover - optional dependency
+    raise RuntimeError(
+        "The 'datasets' package is required for IMDB utilities. Install it via 'pip install datasets'."
+    ) from exc
 
 
 _TOKEN_PATTERN = re.compile(r"\b\w+\b")
@@ -27,6 +34,41 @@ def _normalise(value: float, denominator: float) -> float:
     return value / denominator
 
 
+def _load_local_split(path: Path) -> Tuple[List[str], List[int]]:
+    texts: List[str] = []
+    labels: List[int] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            payload = json.loads(line)
+            texts.append(str(payload["text"]))
+            labels.append(int(payload["label"]))
+    return texts, labels
+
+
+def download_imdb_dataset(
+    target_dir: Path = Path("data/imdb"),
+    dataset_name: str = "imdb",
+    overwrite: bool = False,
+) -> Dict[str, Path]:
+    """Download the IMDB dataset and materialise JSONL splits under ``target_dir``."""
+    target = target_dir.expanduser().resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    expected_files = {split: target / f"{split}.jsonl" for split in ("train", "test")}
+    if not overwrite and all(path.exists() for path in expected_files.values()):
+        return expected_files
+
+    dataset = load_dataset(dataset_name)
+    created: Dict[str, Path] = {}
+    for split, path in expected_files.items():
+        records = dataset[split]
+        with path.open("w", encoding="utf-8") as handle:
+            for text, label in zip(records["text"], records["label"]):
+                json.dump({"text": text, "label": int(label)}, handle)
+                handle.write("\n")
+        created[split] = path
+    return created
+
+
 class IMDBDataset(Dataset):
     """Dataset wrapping IMDB reviews into transformer-ready feature tensors."""
 
@@ -38,19 +80,41 @@ class IMDBDataset(Dataset):
         max_tokens  : int = 256,
         cache_dir   : Optional[Path] = None,
         dataset_name: str = "imdb",
+        dataset_root: Optional[Path] = None,
+        download    : bool = True,
     ) -> None:
         """Load an IMDB split and pre-compute token based features."""
         if split not in {"train", "test"}:
             raise ValueError("IMDBDataset split must be either 'train' or 'test'.")
-        dataset = load_dataset(
-            dataset_name,
-            split=split,
-            cache_dir=str(cache_dir) if cache_dir else None,
-        )
-        self.texts: List[str] = list(dataset["text"])
-        self.labels: List[int] = list(dataset["label"])
+
         self.max_tokens = int(max_tokens)
         self.feature_dim = self.FEATURE_DIM
+
+        local_texts: List[str] | None = None
+        local_labels: List[int] | None = None
+
+        root = dataset_root.expanduser().resolve() if dataset_root else None
+        if root is not None:
+            split_path = root / f"{split}.jsonl"
+            if split_path.exists():
+                local_texts, local_labels = _load_local_split(split_path)
+            elif download:
+                download_imdb_dataset(root, dataset_name=dataset_name, overwrite=False)
+                if split_path.exists():
+                    local_texts, local_labels = _load_local_split(split_path)
+
+        if local_texts is None or local_labels is None:
+            dataset = load_dataset(
+                dataset_name,
+                split=split,
+                cache_dir=str(cache_dir) if cache_dir else None,
+            )
+            self.texts = list(dataset["text"])
+            self.labels = list(dataset["label"])
+        else:
+            self.texts = local_texts
+            self.labels = local_labels
+        self.max_tokens = int(max_tokens)
 
     def __len__(self) -> int:
         """Return the number of review samples available in the dataset."""
@@ -85,22 +149,31 @@ def build_imdb_dataloaders(
     num_workers: int = 0,
     cache_dir  : Optional[Path] = None,
     dataset_name: str = "imdb",
+    dataset_root: Optional[Path] = None,
+    download    : bool = True,
 ) -> Tuple[DataLoader, DataLoader]:
     """Construct train and test dataloaders for IMDB sentiment classification."""
     cache_dir = cache_dir or Path("data/cache")
     cache_dir = cache_dir.expanduser().resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    if dataset_root is not None and download:
+        download_imdb_dataset(dataset_root, dataset_name=dataset_name, overwrite=False)
+
     # Prepare dataset instances for each split with shared configuration.
     train_dataset = IMDBDataset(split       = "train",
                                 max_tokens  = max_tokens,
                                 cache_dir   = cache_dir,
                                 dataset_name= dataset_name,
+                                dataset_root= dataset_root,
+                                download    = download,
                                )
     test_dataset = IMDBDataset(split       = "test",
                                max_tokens  = max_tokens,
                                cache_dir   = cache_dir,
                                dataset_name= dataset_name,
+                               dataset_root= dataset_root,
+                               download    = download,
                               )
 
     train_loader = DataLoader(dataset    = train_dataset,

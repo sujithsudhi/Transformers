@@ -120,12 +120,14 @@ def main() -> None:
 
     data_cfg = app_config.data
 
-    train_loader, test_loader = build_imdb_dataloaders(batch_size=data_cfg.batch_size,
-                                                       max_tokens=data_cfg.max_tokens,
-                                                       num_workers=data_cfg.num_workers,
-                                                       cache_dir=data_cfg.cache_dir,
-                                                       dataset_name=getattr(data_cfg, "dataset_name", "imdb"),
-                                                      )
+    train_loader, test_loader = build_imdb_dataloaders(
+        batch_size=data_cfg.batch_size,
+        max_tokens=data_cfg.max_tokens,
+        num_workers=data_cfg.num_workers,
+        cache_dir=data_cfg.cache_dir,
+        dataset_name=getattr(data_cfg, "dataset_name", "imdb"),
+        dataset_root=getattr(data_cfg, "dataset_root", Path("data/imdb")),
+    )
     # Extract feature dimension from dataset to configure projection layer.
     feature_dim = train_loader.dataset.feature_dim  # type: ignore[attr-defined]
 

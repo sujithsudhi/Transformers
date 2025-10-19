@@ -1,10 +1,22 @@
 """Configuration package exposing base and application-specific classes."""
 
-from .base import AppConfig, BaseDataConfig, BaseModelConfig, BaseTrainingConfig
+from .base import (
+    AppConfig,
+    BaseDataConfig,
+    BaseDatasetConfig,
+    BaseDataloaderConfig,
+    BaseLossConfig,
+    BaseModelConfig,
+    BaseOptimizerConfig,
+    BaseTrainingConfig,
+)
 from .transformers import (
     TransformersConfig,
     TransformersDataConfig,
+    TransformersDataloaderConfig,
+    TransformersLossConfig,
     TransformersModelConfig,
+    TransformersOptimizerConfig,
     TransformersTrainingConfig,
 )
 from .imdb import IMDBConfig, IMDBDataConfig, IMDBModelConfig, IMDBTrainingConfig
@@ -12,7 +24,11 @@ from .imdb import IMDBConfig, IMDBDataConfig, IMDBModelConfig, IMDBTrainingConfi
 __all__ = [
     "AppConfig",
     "BaseDataConfig",
+    "BaseDatasetConfig",
+    "BaseDataloaderConfig",
+    "BaseLossConfig",
     "BaseModelConfig",
+    "BaseOptimizerConfig",
     "BaseTrainingConfig",
     "IMDBConfig",
     "IMDBDataConfig",
@@ -20,6 +36,9 @@ __all__ = [
     "IMDBTrainingConfig",
     "TransformersConfig",
     "TransformersDataConfig",
+    "TransformersDataloaderConfig",
+    "TransformersLossConfig",
     "TransformersModelConfig",
+    "TransformersOptimizerConfig",
     "TransformersTrainingConfig",
 ]

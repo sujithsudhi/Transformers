@@ -1,11 +1,11 @@
-"""Train the Neuscenes transformers model using configuration-driven orchestration."""
+"""Train the transformers model using configuration-driven orchestration."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
+from dataclasses import asdict, is_dataclass
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -18,36 +18,34 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from models.core import Trainer, evaluate, load_training_config
-from src.datasets import load_neuscenes_metadata, split_neuscenes
-from src.datasets.neuscenes import NeuscenesMetadata, SceneStats
-from models import TransformersModel, TransformersModelConfig
+from scene_data.scene import (
+    DatasetMetadata,
+    SceneDatasetConfig,
+    SceneRecord,
+    load_scene_metadata,
+    split_scene_dataset,
+)
+from models import (
+    TransformersModel,
+    TransformersModelConfig,
+    Trainer,
+    evaluate,
+    load_training_config,
+)
 
 
-"""Dataset converting Neuscenes scene aggregates into tensor features."""
-class NeuscenesSceneDataset(Dataset):
+class SceneFeatureDataset(Dataset):
+    """Dataset converting scene aggregates into tensor features."""
+
     FEATURE_DIM = 3
 
-
-
-    def __init__(self, scenes: List[SceneStats], sensor_index: Dict[str, int]) -> None:
+    def __init__(self, scenes: List[SceneRecord], sensor_index: Dict[str, int]) -> None:
         self.scenes = scenes
         self.sensor_index = sensor_index
         self.num_sensors = len(sensor_index)
 
-    """Return total number of available scenes."""
-
     def __len__(self) -> int:
         return len(self.scenes)
-
-    """Return feature tensor and regression target for a scene.
-
-    Args:
-        idx: Zero-based scene index.
-
-    Returns:
-        Tuple containing sensor-feature tensor and target tensor.
-    """
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         scene = self.scenes[idx]
@@ -63,97 +61,40 @@ class NeuscenesSceneDataset(Dataset):
         return features, target
 
 
-"""Parse CLI arguments controlling the Neuscenes transformers run."""
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the Neuscenes transformers model.")
+    parser = argparse.ArgumentParser(description="Train the transformers model.")
     parser.add_argument(
         "--config",
         type=str,
-        default="configs.config:AppConfig",
-        help="Python path to the application config class (e.g. 'configs.config:AppConfig').",
-    )
-    parser.add_argument(
-        "--dataset-config",
-        type=str,
-        default=None,
-        help="Optional Python path overriding the dataset config class.",
-    )
-    parser.add_argument(
-        "--training-config",
-        type=str,
-        default=None,
-        help="Optional Python path overriding the training config class.",
-    )
-    parser.add_argument(
-        "--history-out",
-        type=Path,
-        default=None,
-        help="Optional path to store training history JSON.",
-    )
-    parser.add_argument(
-        "--plot-out",
-        type=Path,
-        default=None,
-        help="Optional path to save a loss curve plot image.",
+        default="configs.transformers:TransformersConfig",
+        help="Python path to the application config class (e.g. 'configs.transformers:TransformersConfig').",
     )
     return parser.parse_args()
 
 
-"""Load a CONFIG_CLASS implementation from a Python file."""
-def load_config_class(path: Path) -> type:
-    module_name, attr_name = path.stem.split(".", 1)
+def load_config_target(target: str) -> Any:
+    """Import and instantiate a configuration object referenced by string."""
+    if not target:
+        raise ValueError("Configuration target string cannot be empty.")
+    if ":" in target:
+        module_name, attr_name = target.split(":", 1)
+    else:
+        module_name, attr_name = target.rsplit(".", 1)
     module = import_module(module_name)
-    return getattr(module, attr_name)
+    attr = getattr(module, attr_name)
+    return attr() if isinstance(attr, type) else attr
 
 
-"""Resolve a JSON-style config reference into a dict."""
-def load_json_config(path: Path) -> Dict[str, Any]:
-    resolved = path.expanduser().resolve()
-    with resolved.open("r", encoding="utf-8") as handle:
-        cleaned_lines = []
-        for line in handle:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("//"):
-                continue
-            cleaned_lines.append(line.split("//", 1)[0])
-    cleaned = "\n".join(cleaned_lines)
-    return json.loads(cleaned)
-
-
-"""Resolve relative paths against the base application config."""
-def resolve_path(base_config: Path, candidate: Optional[Path | str]) -> Optional[Path]:
-    if isinstance(candidate, Path):
-        return candidate.expanduser().resolve()
-    if isinstance(candidate, str):
-        return base_config.parent.joinpath(candidate).resolve()
-    return None
-
-
-"""Derive a stable sensor index from dataset metadata.
-
-Args:
-    metadata: Loaded Neuscenes metadata.
-
-Returns:
-    Mapping from sensor name to contiguous index.
-"""
-def build_sensor_index(metadata: NeuscenesMetadata) -> Dict[str, int]:
+def build_sensor_index(metadata: DatasetMetadata) -> Dict[str, int]:
+    """Derive a stable sensor index from dataset metadata."""
     names = sorted({sensor for scene in metadata.scenes for sensor in scene.sensors.keys()})
     if not names:
-        raise RuntimeError("No sensors discovered in Neuscenes metadata.")
+        raise RuntimeError("No sensors discovered in dataset metadata.")
     return {name: idx for idx, name in enumerate(names)}
 
 
-"""Instantiate an optimizer from configuration.
-
-Args:
-    model: Model whose parameters will be optimized.
-    spec: Optimizer configuration dictionary.
-
-Returns:
-    Configured torch optimizer instance.
-"""
 def build_optimizer(model: nn.Module, spec: Dict[str, Any]) -> torch.optim.Optimizer:
+    """Instantiate an optimizer from configuration."""
     name = spec.get("name", "adamw").lower()
     kwargs = {k: v for k, v in spec.items() if k != "name"}
     if "betas" in kwargs and isinstance(kwargs["betas"], list):
@@ -167,15 +108,8 @@ def build_optimizer(model: nn.Module, spec: Dict[str, Any]) -> torch.optim.Optim
     raise ValueError(f"Unsupported optimizer '{name}'.")
 
 
-"""Instantiate a loss function from configuration.
-
-Args:
-    spec: Loss configuration dictionary.
-
-Returns:
-    Configured torch loss module.
-"""
 def build_loss(spec: Dict[str, Any]) -> nn.Module:
+    """Instantiate a loss function from configuration."""
     name = spec.get("name", "mse").lower()
     if name == "mse":
         return nn.MSELoss()
@@ -187,31 +121,21 @@ def build_loss(spec: Dict[str, Any]) -> nn.Module:
     raise ValueError(f"Unsupported loss '{name}'.")
 
 
-"""Create train/validation/test dataloaders from scene splits.
-
-Args:
-    splits: Partitioned scenes keyed by split name.
-    sensor_index: Consistent sensor ordering.
-    dataloader_cfg: Loader hyperparameters.
-
-Returns:
-    Tuple of train, validation, and test dataloaders (latter two optional).
-"""
 def build_dataloaders(
-    splits: Dict[str, List[SceneStats]],
+    splits: Dict[str, List[SceneRecord]],
     sensor_index: Dict[str, int],
     dataloader_cfg: Dict[str, Any],
 ) -> Tuple[DataLoader, Optional[DataLoader], Optional[DataLoader]]:
-
+    """Create train/validation/test dataloaders from scene splits."""
     batch_size = int(dataloader_cfg.get("batch_size", 16))
     num_workers = int(dataloader_cfg.get("num_workers", 0))
     pin_memory = bool(dataloader_cfg.get("pin_memory", torch.cuda.is_available()))
 
-    def make_loader(scenes: Iterable[SceneStats], shuffle: bool) -> Optional[DataLoader]:
+    def make_loader(scenes: Iterable[SceneRecord], shuffle: bool) -> Optional[DataLoader]:
         scenes = list(scenes)
         if not scenes:
             return None
-        dataset = NeuscenesSceneDataset(scenes, sensor_index)
+        dataset = SceneFeatureDataset(scenes, sensor_index)
         return DataLoader(
             dataset,
             batch_size=batch_size,
@@ -230,13 +154,8 @@ def build_dataloaders(
     return train_loader, val_loader, test_loader
 
 
-"""Persist training history if an output path is provided.
-
-Args:
-    history: Epoch-wise metrics to serialize.
-    path: Target file location or None.
-"""
 def maybe_save_history(history: List[Dict[str, Any]], path: Optional[Path]) -> None:
+    """Persist training history if an output path is provided."""
     if path is None:
         return
     resolved = path.expanduser().resolve()
@@ -290,96 +209,76 @@ def maybe_plot_history(history: List[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training curve plotted to {resolved}")
 
 
-"""Entry point orchestrating config loading, dataloaders, and training."""
+def _to_mapping(obj: Any) -> Dict[str, Any]:
+    if hasattr(obj, "as_dict"):
+        return obj.as_dict()  # type: ignore[return-value]
+    if is_dataclass(obj):
+        return asdict(obj)
+    if isinstance(obj, dict):
+        return dict(obj)
+    raise TypeError("Configuration objects must expose as_dict(), be dataclasses, or mappings.")
+
+
 def main() -> None:
     args = parse_args()
-    app_config_path = args.config.expanduser().resolve()
-    app_config_cls = load_config_class(app_config_path)
-    app_config = app_config_cls()
+    app_config_obj = load_config_target(args.config)
+    app_config = app_config_obj() if isinstance(app_config_obj, type) else app_config_obj
 
-    dataset_settings = (
-        load_config_target(args.dataset_config) if args.dataset_config else app_config.dataset
-    )
-    training_settings = (
-        load_config_target(args.training_config) if args.training_config else app_config.training
-    )
-
-    def to_dataset_config(obj: Any):
-        if hasattr(obj, "to_dataset_config"):
-            return obj.to_dataset_config()
-        from src.datasets.neuscenes import DatasetConfig as NeuscenesDatasetConfig
-
-        if isinstance(obj, NeuscenesDatasetConfig):
-            return obj
-        if isinstance(obj, dict):
-            splits_raw = {k: float(v) for k, v in obj["splits"].items()}
-            total = sum(splits_raw.values())
-            if total <= 0:
-                raise ValueError("At least one positive dataset split ratio is required.")
-            normalized = {name: value / total for name, value in splits_raw.items()}
-            return NeuscenesDatasetConfig(
-                dataset_root=Path(obj["dataset_root"]).expanduser().resolve(),
-                splits=normalized,
-                shuffle=bool(obj.get("shuffle", True)),
-                seed=int(obj.get("seed", 42)),
-            )
-        raise TypeError(
-            "Unsupported dataset configuration type; expected object with to_dataset_config()."
+    required_attrs = ("dataset", "model", "training", "dataloader", "optimizer", "loss")
+    missing = [name for name in required_attrs if not hasattr(app_config, name)]
+    if missing:
+        missing_csv = ", ".join(missing)
+        raise AttributeError(
+            f"Application config '{type(app_config).__name__}' is missing required attributes: "
+            f"{missing_csv}"
         )
 
-    def to_dict(obj: Any) -> Dict[str, Any]:
-        if hasattr(obj, "as_dict"):
-            return obj.as_dict()
-        if isinstance(obj, dict):
-            return dict(obj)
-        from dataclasses import asdict, is_dataclass
+    dataset_settings = app_config.dataset
+    if isinstance(dataset_settings, type):
+        dataset_settings = dataset_settings()
+    if hasattr(dataset_settings, "to_dataset_config"):
+        dataset_config = dataset_settings.to_dataset_config()
+    elif is_dataclass(dataset_settings):
+        dataset_config = SceneDatasetConfig(**asdict(dataset_settings))
+    elif isinstance(dataset_settings, SceneDatasetConfig):
+        dataset_config = dataset_settings
+    else:
+        raise TypeError("Dataset configuration must be a SceneDatasetConfig instance or compatible.")
 
-        if is_dataclass(obj):
-            return asdict(obj)
-        raise TypeError("Configuration objects must expose as_dict() or be dicts.")
+    dataset_config = SceneDatasetConfig(
+        dataset_root=Path(dataset_config.dataset_root).expanduser().resolve(),
+        metadata_file=dataset_config.metadata_file,
+        splits=dict(dataset_config.splits),
+        shuffle=dataset_config.shuffle,
+        seed=dataset_config.seed,
+    )
 
-    def to_training_payload(obj: Any) -> Dict[str, Any]:
-        if hasattr(obj, "as_dict"):
-            return obj.as_dict()
-        if isinstance(obj, dict):
-            return dict(obj)
-        from dataclasses import asdict, is_dataclass
-
-        if is_dataclass(obj):
-            return asdict(obj)
-        raise TypeError("Unsupported training configuration type; provide as_dict() or mapping.")
-
-    dataset_config = to_dataset_config(dataset_settings)
-    training_payload = to_training_payload(training_settings)
-
+    training_payload = _to_mapping(app_config.training)
     training_config = load_training_config(training_payload)
 
-    metadata = load_neuscenes_metadata(dataset_config.dataset_root)
-    splits = split_neuscenes(metadata, dataset_config)
+    metadata = load_scene_metadata(
+        dataset_config.dataset_root, metadata_file=dataset_config.metadata_file
+    )
+    splits = split_scene_dataset(metadata, dataset_config)
     sensor_index = build_sensor_index(metadata)
 
-    dataloader_cfg = asdict(app_config.dataloader)
+    dataloader_cfg = _to_mapping(app_config.dataloader)
     train_loader, val_loader, test_loader = build_dataloaders(
         splits,
         sensor_index,
         dataloader_cfg,
     )
 
-    model_cfg = dict(training_payload.get("model", {}))
-    if not model_cfg:
-        raise ValueError("Model configuration missing from training settings.")
-    if "input_dim" not in model_cfg:
-        raise ValueError("Model configuration must include 'input_dim'.")
-    if model_cfg["input_dim"] != NeuscenesSceneDataset.FEATURE_DIM:
-        raise ValueError(
-            f"Configured input_dim ({model_cfg['input_dim']}) does not match dataset feature "
-            f"dimension ({NeuscenesSceneDataset.FEATURE_DIM})."
-        )
-    model_config = TransformersModelConfig(**model_cfg)
+    model_settings = asdict(app_config.model)
+    model_settings["input_dim"] = model_settings.get("input_dim", SceneFeatureDataset.FEATURE_DIM)
+    model_settings.setdefault("num_outputs", 1)
+    model_config = TransformersModelConfig(**model_settings)
     model = TransformersModel(model_config)
 
-    optimizer = build_optimizer(model, to_dict(app_config.optimizer))
-    loss_fn = build_loss(to_dict(app_config.loss))
+    optimizer_cfg = _to_mapping(app_config.optimizer)
+    optimizer = build_optimizer(model, optimizer_cfg)
+    loss_cfg = _to_mapping(app_config.loss)
+    loss_fn = build_loss(loss_cfg)
 
     trainer = Trainer(
         model=model,
@@ -402,30 +301,16 @@ def main() -> None:
             progress_desc="Test",
         )
 
-    history_target = args.history_out or getattr(app_config, "history_output", None)
-    history_path = Path(history_target) if history_target is not None else None
+    history_path = getattr(app_config, "history_path", None)
     maybe_save_history(history, history_path)
 
-    if args.plot_out is not None:
-        plot_path: Optional[Path] = args.plot_out
-    elif history_path is not None:
+    plot_path: Optional[Path] = getattr(app_config, "plot_path", None)
+    if plot_path is None and history_path is not None:
         plot_path = history_path.with_suffix(".png")
-    else:
-        plot_path = PROJECT_ROOT / "experiments" / "training_history.png"
     maybe_plot_history(history, plot_path)
 
-    os.environ["FOUNDATION_APP_CONFIG"] = describe_config(app_config)
-    os.environ["FOUNDATION_DATASET_CONFIG"] = (
-        args.dataset_config or describe_config(dataset_settings)
-    )
-    os.environ["FOUNDATION_TRAINING_CONFIG"] = (
-        args.training_config or describe_config(training_settings)
-    )
-
-    payload: Dict[str, Any] = {"train_history": history}
-    if test_metrics is not None:
-        payload["test_metrics"] = test_metrics
-    print(json.dumps(payload, indent=2))
+    summary = {"train_history": history, "test_metrics": test_metrics}
+    print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
