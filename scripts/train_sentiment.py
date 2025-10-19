@@ -13,18 +13,19 @@ from data import build_imdb_dataloaders
 
 from models import (TransformersModel,
                     TransformersModelConfig,
-                     TrainingConfig,
-                     Trainer,
-                     evaluate,
+                    TrainingConfig,
+                    Trainer,
+                    evaluate,
                     load_training_config,)
 
 
 # Function: build_optimizer
 # Description: Construct an AdamW optimizer applying provided hyperparameters.
-def build_optimizer(model: nn.Module,
-                    lr: float,
+def build_optimizer(model       : nn.Module,
+                    lr          : float,
                     weight_decay: float,
                    ) -> torch.optim.Optimizer:
+    
     return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
 
@@ -141,45 +142,44 @@ def main() -> None:
     torch.manual_seed(42)
 
     app_config = load_config_target("configs.imdb:IMDBConfig")
+
     # Validate configuration contract before applying overrides.
     if not hasattr(app_config, "data") or not hasattr(app_config, "model"):
         raise TypeError("Configuration object must expose 'data', 'model', and 'training'.")
 
     data_cfg = app_config.data
 
-    train_loader, test_loader = build_imdb_dataloaders(
-        batch_size=data_cfg.batch_size,
-        max_tokens=data_cfg.max_tokens,
-        num_workers=data_cfg.num_workers,
-        cache_dir=data_cfg.cache_dir,
-        dataset_name=getattr(data_cfg, "dataset_name", "imdb"),
-        dataset_root=getattr(data_cfg, "dataset_root", Path("data/imdb")),
-    )
+    train_loader, test_loader = build_imdb_dataloaders(batch_size    = data_cfg.batch_size,
+                                                       max_tokens    = data_cfg.max_tokens,
+                                                       num_workers   = data_cfg.num_workers,
+                                                       cache_dir     = data_cfg.cache_dir,
+                                                       dataset_name  = getattr(data_cfg, "dataset_name", "imdb"),
+                                                       dataset_root  = getattr(data_cfg, "dataset_root", Path("data/imdb")),
+                                                      )
     # Extract feature dimension from dataset to configure projection layer.
     feature_dim = train_loader.dataset.feature_dim  # type: ignore[attr-defined]
 
-    model_kwargs = asdict(app_config.model)
+    model_kwargs              = asdict(app_config.model)
     model_kwargs["input_dim"] = feature_dim
-    model_config = TransformersModelConfig(**model_kwargs)
+    model_config              = TransformersModelConfig(**model_kwargs)
+
     # Instantiate transformer backbone with resolved configuration.
-    model = TransformersModel(model_config)
+    model                     = TransformersModel(model_config)
 
-    training_cfg = app_config.training
+    training_cfg              = app_config.training
 
-    optimizer = build_optimizer(model, lr=training_cfg.lr, weight_decay=training_cfg.weight_decay)
-    loss_fn = build_loss()
+    optimizer                 = build_optimizer(model, lr=training_cfg.lr, weight_decay=training_cfg.weight_decay)
+    loss_fn                   = build_loss()
 
-    training_config = load_training_config(
-        {
-            "epochs"                     : training_cfg.epochs,
-            "device"                     : training_cfg.device,
-            "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
-            "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
-            "use_amp"                    : training_cfg.use_amp,
-            "log_interval"               : training_cfg.log_interval,
-            "non_blocking"               : training_cfg.non_blocking,
-        }
-    )
+    training_config           = load_training_config({"epochs"                     : training_cfg.epochs,
+                                                      "device"                     : training_cfg.device,
+                                                      "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
+                                                      "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
+                                                      "use_amp"                    : training_cfg.use_amp,
+                                                      "log_interval"               : training_cfg.log_interval,
+                                                      "non_blocking"               : training_cfg.non_blocking,
+                                                     }
+                                                    )
 
     trainer = Trainer(model       = model,
                       optimizer   = optimizer,

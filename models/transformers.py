@@ -11,6 +11,7 @@ from .core import PositionalEncoding, TransformerEncoderLayer
 
 @dataclass
 class TransformersModelConfig:
+
     input_dim         : int
     embed_dim         : int           = 256
     depth             : int           = 6
@@ -53,16 +54,15 @@ class TransformersModel(nn.Module):
         self.config = config
 
         self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
-        self.position = PositionalEncoding(config.embed_dim,
-                                           dropout = config.dropout,
-                                          )
-        self.encoder = nn.ModuleList(
-            TransformerEncoderLayer(embed_dim         = config.embed_dim,
-                                    num_heads         = config.num_heads,
-                                    mlp_ratio         = config.mlp_ratio,
-                                    dropout           = config.dropout,
-                                    attention_dropout = config.attention_dropout,
-                                   )
+        self.position   = PositionalEncoding(config.embed_dim,
+                                             dropout = config.dropout,
+                                            )
+        self.encoder = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
+                                                             num_heads         = config.num_heads,
+                                                             mlp_ratio         = config.mlp_ratio,
+                                                             dropout           = config.dropout,
+                                                             attention_dropout = config.attention_dropout,
+                                                            )
             for _ in range(config.depth)
         )
         self.norm = nn.LayerNorm(config.embed_dim)

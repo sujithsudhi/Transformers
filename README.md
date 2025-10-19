@@ -68,6 +68,50 @@ The `tool/deploy/` directory hosts export and inference scripts:
   `tool/deploy/triton/run_triton_jetson.sh`.
 - `tokenizer/` — store tokenizer assets alongside exported models.
 
+## Flow Overview
+
+```mermaid
+flowchart LR
+    subgraph Configs
+        A["AppConfig subclasses\n(configs/)"]
+    end
+    subgraph Scripts
+        B["train_sentiment.py"]
+        C["scripts/train_transformers.py"]
+        D["tool/deploy/onnx_export.py"]
+    end
+    subgraph Data
+        E["data/imdb.py\n(IMDBDataset & loaders)"]
+        F["scene_data/scene.py\n(SceneDatasetConfig)"]
+    end
+    subgraph Core
+        G["models/transformers.py\nTransformersModel"]
+        H["models/training.py\nTrainer & TrainingConfig"]
+    end
+    subgraph Outputs
+        I["results/\nmetrics & plots"]
+        J["checkpoints/\nmodel.state dict"]
+        K["tool/deploy/\nONNX/TensorRT artifacts"]
+        L["viz/\nplotting helpers"]
+    end
+
+    A -- dataclasses define --> B
+    A -- dataclasses define --> C
+    A -- model config --> G
+    A -- training config --> H
+    B -- loads --> E
+    C -- loads --> F
+    E -- dataloaders --> H
+    F -- dataloaders --> H
+    H -- trains --> G
+    H -- history --> I
+    H -- checkpoint --> J
+    J -- consumed by --> D
+    D -- exports --> K
+    I -- visualized with --> L
+    K -- served via --> Scripts
+```
+
 ## Visualisation
 
 Use helpers in `viz/` (e.g., `viz.plots.plot_loss_curves`) to quickly chart loss curves,
