@@ -16,7 +16,8 @@ Transformers/
 ├── viz/                 # Plotting utilities for training/eval metrics
 ├── results/             # Persisted metrics and plots
 ├── requirements.txt     # Python dependencies
-├── train_sentiment.py   # IMDB training entry-point
+├── app/
+│   └── train_sentiment.py   # IMDB training entry-point
 └── README.md
 ```
 
@@ -38,10 +39,10 @@ python -m pip install onnxruntime-gpu onnx onnx-tf tensorflow tensorrt pycuda
 ## Training (IMDB Sentiment)
 
 ```bash
-python train_sentiment.py
+python -m app.train_sentiment
 ```
 
-`train_sentiment.py` loads `configs.imdb:IMDBConfig`, which captures dataset path,
+`app/train_sentiment.py` loads `configs.imdb:IMDBConfig`, which captures dataset path,
 tokenisation, model hyperparameters, and training knobs. `data/imdb.py` will download
 the IMDB dataset (via Hugging Face `datasets`) into `data/imdb/` on first run. Cached
 JSONL files remain ignored by Git.
@@ -76,7 +77,7 @@ flowchart LR
         A["AppConfig subclasses\n(configs/)"]
     end
     subgraph Scripts
-        B["train_sentiment.py"]
+        B["app/train_sentiment.py"]
         C["scripts/train_transformers.py"]
         D["tool/deploy/onnx_export.py"]
     end
@@ -86,7 +87,7 @@ flowchart LR
     end
     subgraph Core
         G["models/transformers.py\nTransformersModel"]
-        H["models/training.py\nTrainer & TrainingConfig"]
+        H["training/training.py\nTrainer & TrainingConfig"]
     end
     subgraph Outputs
         I["results/\nmetrics & plots"]
@@ -133,6 +134,7 @@ Optional environment variables:
 - `WANDB_PROJECT` (default: `transformers-imdb`)
 - `WANDB_ENTITY` for team/workspace names
 - `WANDB_NAME` to override the run display name
+- Config fields: `IMDBConfig.wandb_api_key`, `wandb_project`, `wandb_entity`, `wandb_run_name`, `wandb_disabled`
 
 Each run logs epoch metrics, final test results, the saved checkpoint, and history JSON as
 artifacts for later analysis. Set `WANDB_DISABLED=true` to skip logging without editing the

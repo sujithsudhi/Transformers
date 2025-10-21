@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
-from scene_data.scene import SceneDatasetConfig
+from data.scene import SceneDatasetConfig
 
 from .base import (
     AppConfig,

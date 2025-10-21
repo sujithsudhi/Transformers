@@ -128,7 +128,9 @@ class MultiHeadSelfAttention(nn.Module):
                  dropout   : float = 0.0,
                  bias      : bool = True,
                 ) -> None:
+        
         super().__init__()
+        
         if embed_dim % num_heads != 0:
             raise ValueError("embed_dim must be divisible by num_heads.")
         
@@ -237,23 +239,28 @@ class TransformerEncoderLayer(nn.Module):
                  activation        : Optional[nn.Module] = None,
                  norm_first        : bool = True,
                 ) -> None:
+        
         super().__init__()
+
         hidden_dim = int(embed_dim * mlp_ratio)
 
         self.norm_first = norm_first
-        self.self_attn = MultiHeadSelfAttention(embed_dim = embed_dim,
+        self.self_attn  = MultiHeadSelfAttention(embed_dim = embed_dim,
                                                  num_heads = num_heads,
                                                  dropout   = attention_dropout,
                                                 )
         self.attn_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
-        self.norm1 = nn.LayerNorm(embed_dim)
-        self.norm2 = nn.LayerNorm(embed_dim)
-        self.mlp = MLPBlock(input_dim  = embed_dim,
-                            hidden_dim = hidden_dim,
-                            output_dim = embed_dim,
-                            activation = activation or nn.GELU(),
-                            dropout    = dropout,
-                           )
+
+        self.norm1        = nn.LayerNorm(embed_dim)
+        self.norm2        = nn.LayerNorm(embed_dim)
+
+        self.mlp          = MLPBlock(input_dim  = embed_dim,
+                                     hidden_dim = hidden_dim,
+                                     output_dim = embed_dim,
+                                     activation = activation or nn.GELU(),
+                                     dropout    = dropout,
+                                    )
+        
         self.mlp_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
     ''' Function: forward
@@ -268,6 +275,7 @@ class TransformerEncoderLayer(nn.Module):
                 x    : Tensor,
                 mask : Optional[Tensor] = None,
                ) -> Tensor:
+        
         if self.norm_first:
             x = x + self.attn_dropout(self.self_attn(self.norm1(x), mask = mask))
             x = x + self.mlp_dropout(self.mlp(self.norm2(x)))

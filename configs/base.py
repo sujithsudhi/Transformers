@@ -131,3 +131,8 @@ class AppConfig:
     history_path : Path                  = Path("results/history.json")
     plot_path    : Path                  = Path("results/history.png")
     checkpoint_path: Path                = Path("results/model.pt")
+    wandb_disabled: bool                 = False
+    wandb_api_key: Optional[str]         = "2b83bebbf4a572760e4ebc07373fae82f4ab53b8"
+    wandb_project: str                   = "base"
+    wandb_entity : Optional[str]         = None
+    wandb_run_name: Optional[str]        = None

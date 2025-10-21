@@ -18,20 +18,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scene_data.scene import (
+from data.scene import (
     DatasetMetadata,
     SceneDatasetConfig,
     SceneRecord,
     load_scene_metadata,
     split_scene_dataset,
 )
-from models import (
-    TransformersModel,
-    TransformersModelConfig,
-    Trainer,
-    evaluate,
-    load_training_config,
-)
+from models import TransformersModel, TransformersModelConfig
+from training import Trainer, evaluate, load_training_config
 
 
 class SceneFeatureDataset(Dataset):

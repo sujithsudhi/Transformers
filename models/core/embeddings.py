@@ -27,6 +27,7 @@ class TokenEmbedding(nn.Module):
                  padding_idx : Optional[int] = None,
                 ) -> None:
         super().__init__()
+        
         self.embedding = nn.Embedding(num_embeddings = vocab_size,
                                       embedding_dim  = embed_dim,
                                       padding_idx    = padding_idx,

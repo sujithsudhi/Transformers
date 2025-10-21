@@ -8,7 +8,6 @@ from typing import Dict
 
 from .base import (AppConfig,
                    BaseDataConfig,
-                   BaseDatasetConfig,
                    BaseDataloaderConfig,
                    BaseLossConfig,
                    BaseModelConfig,
@@ -45,7 +44,7 @@ class IMDBModelConfig(BaseModelConfig):
 class IMDBTrainingConfig(BaseTrainingConfig):
     """Training loop defaults for IMDB sentiment fine-tuning."""
 
-    epochs       : int   = 5
+    epochs       : int   = 10
     lr           : float = 3e-4
     weight_decay : float = 0.01
 
@@ -75,9 +74,7 @@ class IMDBLossConfig(BaseLossConfig):
     name : str = "bcewithlogits"
 
     def as_dict(self) -> Dict[str, object]:
-        return {
-            "name" : self.name,
-        }
+        return { "name" : self.name}
 
 
 @dataclass(frozen=True)
@@ -94,3 +91,5 @@ class IMDBConfig(AppConfig):
     history_path : Path                = Path("results/imdb_history.json")
     plot_path    : Path                = Path("results/imdb_history.png")
     checkpoint_path: Path              = Path("results/imdb_transformer.pt")
+    wandb_disabled: bool               = False
+    wandb_project: str                 = "transformers-imdb"
