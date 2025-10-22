@@ -115,3 +115,35 @@ def plot_prediction_histogram(scores: Sequence[float] | np.ndarray | "torch.Tens
     ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.7)
     fig.tight_layout()
     return fig, ax
+
+
+def plot_class_distribution(
+    labels: Sequence[int] | np.ndarray | "torch.Tensor",
+    label_names: Optional[Sequence[str]] = None,
+    title: str = "Class Distribution",
+):
+    """Plot a bar chart showing the distribution of class labels within a dataset."""
+    label_array = _to_numpy(labels).astype(int).ravel()
+    unique, counts = np.unique(label_array, return_counts=True)
+
+    indices = np.argsort(unique)
+    unique = unique[indices]
+    counts = counts[indices]
+
+    if label_names is not None:
+        name_lookup = {
+            idx: label_names[idx] if 0 <= idx < len(label_names) else str(idx)
+            for idx in unique
+        }
+        display_names = [name_lookup[idx] for idx in unique]
+    else:
+        display_names = [str(idx) for idx in unique]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.bar(display_names, counts, color="#ff7f0e", alpha=0.85, edgecolor="black")
+    ax.set_xlabel("Class")
+    ax.set_ylabel("Count")
+    ax.set_title(title)
+    ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.6, axis="y")
+    fig.tight_layout()
+    return fig, ax

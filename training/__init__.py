@@ -4,9 +4,12 @@ from .trainer_utils import (
     build_loss,
     build_optimizer,
     build_wandb_logger,
+    collect_classification_outputs,
+    compute_class_distribution,
     init_wandb_run,
     maybe_plot_history,
     maybe_save_history,
+    prepare_classification_labels,
 )
 from .training import (
     TrainingConfig,
@@ -30,4 +33,7 @@ __all__ = [
     "build_wandb_logger",
     "maybe_save_history",
     "maybe_plot_history",
+    "collect_classification_outputs",
+    "prepare_classification_labels",
+    "compute_class_distribution",
 ]

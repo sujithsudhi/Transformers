@@ -235,6 +235,67 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training curve plotted to {resolved}")
 
 
+def collect_classification_outputs(
+    model: nn.Module,
+    dataloader,
+    device: torch.device,
+    *,
+    non_blocking: bool = True,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    model = model.to(device)
+    model.eval()
+
+    logits_list: list[torch.Tensor] = []
+    probs_list: list[torch.Tensor] = []
+    targets_list: list[torch.Tensor] = []
+
+    sigmoid = torch.nn.Sigmoid()
+    softmax = torch.nn.Softmax(dim=-1)
+
+    with torch.no_grad():
+        for inputs, targets in dataloader:
+            inputs = inputs.to(device, non_blocking=non_blocking)
+            targets = targets.to(device, non_blocking=non_blocking)
+            if targets.ndim > 1 and targets.shape[-1] == 1:
+                targets = targets.view(targets.size(0), -1)
+
+            logits = model(inputs)
+            if logits.ndim == 2 and logits.shape[1] == 1:
+                probs = sigmoid(logits)
+            else:
+                probs = softmax(logits)
+
+            logits_list.append(logits.detach().cpu())
+            probs_list.append(probs.detach().cpu())
+            targets_list.append(targets.detach().cpu())
+
+    logits_tensor = torch.cat(logits_list, dim=0) if logits_list else torch.empty(0)
+    probs_tensor = torch.cat(probs_list, dim=0) if probs_list else torch.empty(0)
+    targets_tensor = torch.cat(targets_list, dim=0) if targets_list else torch.empty(0)
+    return logits_tensor, probs_tensor, targets_tensor
+
+
+def prepare_classification_labels(
+    probabilities: torch.Tensor,
+    targets: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if probabilities.ndim == 2 and probabilities.shape[1] == 1:
+        preds = (probabilities >= 0.5).long().view(-1)
+    else:
+        preds = probabilities.argmax(dim=-1).view(-1)
+
+    true = targets.view(-1)
+    if true.dtype != torch.long:
+        true = true.long()
+    return preds, true
+
+
+def compute_class_distribution(labels: torch.Tensor) -> Dict[str, int]:
+    flattened = labels.view(-1)
+    unique, counts = torch.unique(flattened, return_counts=True)
+    return {str(int(idx)): int(count) for idx, count in zip(unique, counts)}
+
+
 __all__ = [
     "build_optimizer",
     "build_loss",
@@ -242,4 +303,7 @@ __all__ = [
     "build_wandb_logger",
     "maybe_save_history",
     "maybe_plot_history",
+    "collect_classification_outputs",
+    "prepare_classification_labels",
+    "compute_class_distribution",
 ]

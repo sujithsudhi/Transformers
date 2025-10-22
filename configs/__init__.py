@@ -9,33 +9,45 @@ from .base import (AppConfig,
                    BaseOptimizerConfig,
                    BaseTrainingConfig,
 )
-from .transformers import (TransformersConfig,
-                           TransformersDataConfig,
-                           TransformersDataloaderConfig,
-                           TransformersLossConfig,
-                           TransformersModelConfig,
-                           TransformersOptimizerConfig,
-                           TransformersTrainingConfig,
-)
+try:
+    from .transformers import (
+        TransformersConfig,
+        TransformersDataConfig,
+        TransformersDataloaderConfig,
+        TransformersLossConfig,
+        TransformersModelConfig,
+        TransformersOptimizerConfig,
+        TransformersTrainingConfig,
+    )
+except ModuleNotFoundError:
+    TransformersConfig = (
+        TransformersDataConfig
+    ) = TransformersDataloaderConfig = TransformersLossConfig = TransformersModelConfig = (
+        TransformersOptimizerConfig
+    ) = TransformersTrainingConfig = None  # type: ignore
+else:
+    __all__ += [
+        "TransformersConfig",
+        "TransformersDataConfig",
+        "TransformersDataloaderConfig",
+        "TransformersLossConfig",
+        "TransformersModelConfig",
+        "TransformersOptimizerConfig",
+        "TransformersTrainingConfig",
+    ]
 from .imdb import IMDBConfig, IMDBDataConfig, IMDBModelConfig, IMDBTrainingConfig
 
-__all__ = ["AppConfig",
-           "BaseDataConfig",
-           "BaseDatasetConfig",
-           "BaseDataloaderConfig",
-           "BaseLossConfig",
-           "BaseModelConfig",
-           "BaseOptimizerConfig",
-           "BaseTrainingConfig",
-           "IMDBConfig",
-           "IMDBDataConfig",
-           "IMDBModelConfig",
-           "IMDBTrainingConfig",
-           "TransformersConfig",
-           "TransformersDataConfig",
-           "TransformersDataloaderConfig",
-           "TransformersLossConfig",
-           "TransformersModelConfig",
-           "TransformersOptimizerConfig",
-           "TransformersTrainingConfig",
-        ]
+__all__ = [
+    "AppConfig",
+    "BaseDataConfig",
+    "BaseDatasetConfig",
+    "BaseDataloaderConfig",
+    "BaseLossConfig",
+    "BaseModelConfig",
+    "BaseOptimizerConfig",
+    "BaseTrainingConfig",
+    "IMDBConfig",
+    "IMDBDataConfig",
+    "IMDBModelConfig",
+    "IMDBTrainingConfig",
+]

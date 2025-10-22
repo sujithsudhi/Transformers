@@ -5,7 +5,7 @@ import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -18,15 +18,18 @@ from data import DataPrep
 
 from models import TransformersModel, TransformersModelConfig
 from tool.utils import _to_serializable, load_config_target
-from training import (TrainingConfig,
-                      Trainer,
+from training import (Trainer,
                       build_loss,
                       build_optimizer,
+                      collect_classification_outputs,
+                      compute_class_distribution,
                       evaluate,
                       init_wandb_run,
                       load_training_config,
                       maybe_plot_history,
-                      maybe_save_history)
+                      maybe_save_history,
+                      prepare_classification_labels)
+from viz import plot_class_distribution, plot_confusion_matrix
 
 try:
     import wandb
@@ -115,10 +118,11 @@ def main() -> None:
                      )
     history = trainer.fit()
 
+    device = torch.device(training_config.device)
     test_metrics = evaluate(trainer.model,
                             test_loader,
                             loss_fn,
-                            training_config.device,
+                            device,
                             training_config.non_blocking,
                             progress_desc="Test",
                            )
@@ -129,6 +133,17 @@ def main() -> None:
 
     maybe_save_history(history, history_path)
     maybe_plot_history(history, plot_path)
+
+    _, probabilities, targets = collect_classification_outputs(trainer.model,
+                                                               test_loader,
+                                                               device,
+                                                               non_blocking=training_config.non_blocking,
+                                                              )
+    preds, true_labels = prepare_classification_labels(probabilities, targets)
+    total_examples = max(1, true_labels.numel())
+    accuracy = float((preds == true_labels).sum().item()) / total_examples
+    test_metrics["accuracy"] = accuracy
+    test_metrics["examples"] = int(total_examples)
 
     checkpoint_path = checkpoint_path.expanduser().resolve()
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,6 +159,43 @@ def main() -> None:
         checkpoint_path,
     )
 
+    default_results_dir: Path = checkpoint_path.parent
+    if plot_path is not None:
+        default_results_dir = Path(plot_path).expanduser().resolve().parent
+    elif history_path is not None:
+        default_results_dir = Path(history_path).expanduser().resolve().parent
+
+    confusion_path = Path(
+        getattr(app_config, "confusion_matrix_path", default_results_dir / "imdb_confusion_matrix.png")
+    ).expanduser().resolve()
+    distribution_path = Path(
+        getattr(app_config, "class_distribution_path", default_results_dir / "imdb_class_distribution.png")
+    ).expanduser().resolve()
+    confusion_path.parent.mkdir(parents=True, exist_ok=True)
+    distribution_path.parent.mkdir(parents=True, exist_ok=True)
+
+    label_names: Optional[list[str]] = None
+    if hasattr(app_config, "class_labels"):
+        label_names = list(getattr(app_config, "class_labels"))
+
+    confusion_fig, _ = plot_confusion_matrix(
+        y_true=true_labels.numpy(),
+        y_pred=preds.numpy(),
+        labels=label_names,
+        normalize=True,
+        title="Test Confusion Matrix",
+    )
+    confusion_fig.savefig(confusion_path, dpi=200)
+
+    class_fig, _ = plot_class_distribution(
+        labels=true_labels.numpy(),
+        label_names=label_names,
+        title="Test Class Distribution",
+    )
+    class_fig.savefig(distribution_path, dpi=200)
+
+    class_counts = compute_class_distribution(true_labels)
+
     if wandb_run is not None:
         wandb.log({f"test/{k}": v for k, v in test_metrics.items()})
         wandb_run.summary.update({f"test/{k}": v for k, v in test_metrics.items()})
@@ -158,11 +210,23 @@ def main() -> None:
             resolved_plot = plot_path.expanduser().resolve()
             if resolved_plot.exists():
                 wandb.log({"plots/loss": wandb.Image(resolved_plot.as_posix())})
+        if confusion_path.exists():
+            wandb.log({"plots/confusion_matrix": wandb.Image(confusion_path.as_posix())})
+        if distribution_path.exists():
+            wandb.log({"plots/class_distribution": wandb.Image(distribution_path.as_posix())})
+        artifact.add_file(confusion_path.as_posix())
+        artifact.add_file(distribution_path.as_posix())
         wandb_run.log_artifact(artifact)
         wandb_run.finish()
 
-    summary: Dict[str, Any] = {"train_history": history, "test_metrics": test_metrics}
-    
+    summary: Dict[str, Any] = {
+        "train_history": history,
+        "test_metrics": test_metrics,
+        "class_distribution": class_counts,
+        "confusion_matrix_path": confusion_path.as_posix(),
+        "class_distribution_path": distribution_path.as_posix(),
+    }
+    print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":

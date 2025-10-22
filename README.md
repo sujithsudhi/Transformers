@@ -9,11 +9,13 @@ deployment utilities for exporting the trained model to ONNX/TensorRT/Triton.
 Transformers/
 ├── configs/             # Base + application configs (IMDB, Transformers scene demos)
 ├── data/                # IMDB dataset wrapper, download helpers
-├── models/              # Transformer backbone + training utilities
+├── models/              # Transformer backbone components
 ├── scene_data/          # Scene metadata helpers (legacy research demos)
 ├── scripts/             # Extended training scripts (e.g., generic scene workflow)
+├── training/            # Shared training loops, configs, and logging helpers
 ├── tool/deploy/         # Export + inference helpers (ONNX, TensorRT, Triton)
 ├── viz/                 # Plotting utilities for training/eval metrics
+├── val/                 # Standalone validation entry-points
 ├── results/             # Persisted metrics and plots
 ├── requirements.txt     # Python dependencies
 ├── app/
@@ -49,6 +51,21 @@ JSONL files remain ignored by Git.
 
 Metrics and training curves are written to the paths defined by the active config
 (`history_path`, `plot_path`).
+
+## Validation
+
+Run standalone validation against the test or train split, loading a specific checkpoint:
+
+```bash
+python -m val.validate \
+  --checkpoint results/model.pt \
+  --config configs.imdb:IMDBConfig \
+  --split test \
+  --output-dir results/validation
+```
+
+The script reports evaluation metrics, saves a confusion matrix, and plots the class
+distribution for the analysed split under the chosen output directory.
 
 ## Generic Scene Workflow
 
