@@ -21,7 +21,7 @@ class IMDBDataConfig(BaseDataConfig):
     """Data loading parameters for the IMDB sentiment dataset."""
 
     cache_dir    : Path = Path("data/cache/imdb")
-    batch_size   : int  = 32
+    batch_size   : int  = 512
     max_tokens   : int  = 256
     num_workers  : int  = 0
     dataset_name : str  = "imdb"
@@ -44,9 +44,11 @@ class IMDBModelConfig(BaseModelConfig):
 class IMDBTrainingConfig(BaseTrainingConfig):
     """Training loop defaults for IMDB sentiment fine-tuning."""
 
-    epochs       : int   = 10
-    lr           : float = 3e-4
-    weight_decay : float = 0.01
+    epochs                  : int        = 10
+    lr                      : float      = 3e-4
+    weight_decay            : float      = 0.01
+    early_stopping_patience : int | None = 10
+    lr_reduction_patience   : int | None = 5
 
 
 @dataclass(frozen=True)

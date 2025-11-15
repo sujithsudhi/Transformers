@@ -28,6 +28,9 @@ _TRAINING_DEFAULTS: Dict[str, Any] = {
     "use_amp"                      : "auto",
     "log_interval"                 : 50,
     "non_blocking"                 : True,
+    "early_stopping_patience"      : 10,
+    "lr_reduction_patience"        : 5,
+    "lr_reduction_factor"          : 0.5,
 }
 
 
@@ -86,6 +89,32 @@ def _resolve_positive_int(value: Any, default: int) -> int:
     return max(1, candidate)
 
 
+def _resolve_early_stopping_patience(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"", "none", "null", "off", "false"}:
+            return None
+        value = lowered
+    try:
+        patience = int(value)
+    except (TypeError, ValueError):
+        patience = int(float(value))
+    return patience if patience > 0 else None
+
+
+def _resolve_lr_reduction_patience(value: Any) -> int | None:
+    return _resolve_early_stopping_patience(value)
+
+
+def _resolve_lr_reduction_factor(value: Any) -> float:
+    factor = 0.5 if value is None else float(value)
+    if factor <= 0 or factor >= 1:
+        raise ValueError("lr_reduction_factor must be between 0 and 1 (exclusive).")
+    return factor
+
+
 def _resolve_gradient_clip_norm(value: Any) -> float | None:
     if value is None:
         return None
@@ -133,6 +162,18 @@ def _default_non_blocking() -> bool:
     return _resolve_bool(_TRAINING_DEFAULTS.get("non_blocking"), True)
 
 
+def _default_early_stopping_patience() -> int | None:
+    return _resolve_early_stopping_patience(_TRAINING_DEFAULTS.get("early_stopping_patience"))
+
+
+def _default_lr_reduction_patience() -> int | None:
+    return _resolve_lr_reduction_patience(_TRAINING_DEFAULTS.get("lr_reduction_patience"))
+
+
+def _default_lr_reduction_factor() -> float:
+    return _resolve_lr_reduction_factor(_TRAINING_DEFAULTS.get("lr_reduction_factor"))
+
+
 @dataclass
 class TrainingConfig:
     epochs                       : int                = field(default_factory=_default_epochs)
@@ -142,6 +183,9 @@ class TrainingConfig:
     use_amp                      : bool | str | None  = field(default_factory=_default_use_amp)  # type: ignore[assignment]
     log_interval                 : int                = field(default_factory=_default_log_interval)
     non_blocking                 : bool               = field(default_factory=_default_non_blocking)
+    early_stopping_patience      : int | None         = field(default_factory=_default_early_stopping_patience)
+    lr_reduction_patience        : int | None         = field(default_factory=_default_lr_reduction_patience)
+    lr_reduction_factor          : float              = field(default_factory=_default_lr_reduction_factor)
 
     def __post_init__(self) -> None:
         self.epochs = _resolve_positive_int(self.epochs, 5)
@@ -153,6 +197,13 @@ class TrainingConfig:
         self.use_amp = _resolve_use_amp(self.use_amp)
         self.log_interval = _resolve_positive_int(self.log_interval, 50)
         self.non_blocking = _resolve_bool(self.non_blocking, True)
+        self.early_stopping_patience = _resolve_early_stopping_patience(
+            self.early_stopping_patience
+        )
+        self.lr_reduction_patience = _resolve_lr_reduction_patience(
+            self.lr_reduction_patience
+        )
+        self.lr_reduction_factor = _resolve_lr_reduction_factor(self.lr_reduction_factor)
 
 
 def load_training_config(
@@ -180,6 +231,9 @@ def load_training_config(
         "use_amp",
         "log_interval",
         "non_blocking",
+        "early_stopping_patience",
+        "lr_reduction_patience",
+        "lr_reduction_factor",
     }
     kwargs = {key: payload.get(key) for key in valid_keys}
     return TrainingConfig(**kwargs)
@@ -422,6 +476,19 @@ class Trainer:
     '''
     def fit(self) -> list[Dict[str, Any]]:
 
+        patience = self.config.early_stopping_patience
+        monitor_early_stop = (
+            patience is not None and patience > 0 and self.val_loader is not None
+        )
+        lr_patience = self.config.lr_reduction_patience
+        monitor_lr_reduction = (
+            lr_patience is not None and lr_patience > 0 and self.val_loader is not None
+        )
+        lr_factor = self.config.lr_reduction_factor
+        best_val_loss = float("inf")
+        stagnant_epochs = 0
+        stagnant_lr_epochs = 0
+
         for epoch in range(1, self.config.epochs + 1):
             iterator, _ = _progress_iter(self.train_loader, f"Epoch {epoch}")
             train_metrics = train_one_epoch(self.model,
@@ -443,6 +510,25 @@ class Trainer:
                                        progress_desc = f"Epoch {epoch} [val]",
                                       )
 
+            should_stop_after_epoch = False
+            lr_reduced = False
+            if (monitor_early_stop or monitor_lr_reduction) and val_metrics is not None:
+                current_loss = val_metrics.get("loss")
+                if current_loss is not None:
+                    val_loss = float(current_loss)
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        stagnant_epochs = 0
+                        stagnant_lr_epochs = 0
+                    else:
+                        stagnant_epochs += 1
+                        stagnant_lr_epochs += 1
+                        if monitor_lr_reduction and lr_patience is not None and stagnant_lr_epochs >= lr_patience:
+                            lr_reduced = self._reduce_learning_rate(lr_factor)
+                            stagnant_lr_epochs = 0
+                        if monitor_early_stop and patience is not None and stagnant_epochs >= patience:
+                            should_stop_after_epoch = True
+
             self._step_scheduler(val_metrics)
             record = {
                 "epoch" : epoch,
@@ -450,9 +536,15 @@ class Trainer:
                 "val"   : val_metrics,
                 "lr"    : self.optimizer.param_groups[0]["lr"],
             }
+            if lr_reduced:
+                record["lr_reduced"] = True
+            if should_stop_after_epoch:
+                record["early_stop_triggered"] = True
             self.history.append(record)
             if self.logger is not None:
                 self.logger(record)
+            if should_stop_after_epoch:
+                break
 
         return self.history
 
@@ -472,6 +564,18 @@ class Trainer:
             self.scheduler.step(val_metrics["loss"])
         else:
             self.scheduler.step()
+
+    def _reduce_learning_rate(self, factor: float) -> bool:
+        if factor <= 0 or factor >= 1:
+            return False
+        updated = False
+        for group in self.optimizer.param_groups:
+            current_lr = group.get("lr")
+            if current_lr is None:
+                continue
+            group["lr"] = current_lr * factor
+            updated = True
+        return updated
 
 
 ''' Function: fit

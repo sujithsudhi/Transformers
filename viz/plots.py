@@ -55,13 +55,12 @@ def plot_loss_curves(
     return fig, ax
 
 
-def plot_confusion_matrix(
-    y_true: Sequence[int] | np.ndarray | "torch.Tensor",
-    y_pred: Sequence[int] | np.ndarray | "torch.Tensor",
-    labels: Optional[Sequence[str]] = None,
-    normalize: bool = True,
-    title: str = "Confusion Matrix",
-):
+def plot_confusion_matrix(y_true: Sequence[int] | np.ndarray | "torch.Tensor",
+                          y_pred: Sequence[int] | np.ndarray | "torch.Tensor",
+                          labels: Optional[Sequence[str]] = None,
+                          normalize: bool = True,
+                          title: str = "Confusion Matrix",
+                         ):
     """Plot a confusion matrix given integer labels/predictions."""
     y_true_np = _to_numpy(y_true).astype(int)
     y_pred_np = _to_numpy(y_pred).astype(int)
@@ -102,11 +101,10 @@ def plot_confusion_matrix(
     return fig, ax
 
 
-def plot_prediction_histogram(
-    scores: Sequence[float] | np.ndarray | "torch.Tensor",
-    bins: int = 20,
-    title: str = "Prediction Score Distribution",
-):
+def plot_prediction_histogram(scores: Sequence[float] | np.ndarray | "torch.Tensor",
+                              bins: int = 20,
+                              title: str = "Prediction Score Distribution",
+                             ):
     """Plot a histogram of model prediction scores (probabilities or logits)."""
     values = _to_numpy(scores).ravel()
     fig, ax = plt.subplots(figsize=(7, 4))

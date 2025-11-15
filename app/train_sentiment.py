@@ -90,6 +90,9 @@ def main() -> None:
                                                       "use_amp"                    : training_cfg.use_amp,
                                                       "log_interval"               : training_cfg.log_interval,
                                                       "non_blocking"               : training_cfg.non_blocking,
+                                                      "early_stopping_patience"    : training_cfg.early_stopping_patience,
+                                                      "lr_reduction_patience"      : training_cfg.lr_reduction_patience,
+                                                      "lr_reduction_factor"        : training_cfg.lr_reduction_factor,
                                                      }
                                                     )
 

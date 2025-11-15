@@ -47,6 +47,9 @@ class BaseTrainingConfig:
     use_amp                      : str | bool   = "auto"
     log_interval                 : int          = 50
     non_blocking                 : bool         = True
+    early_stopping_patience      : int | None   = 10
+    lr_reduction_patience        : int | None   = 5
+    lr_reduction_factor          : float        = 0.5
 
 
 @dataclass(frozen=True)
