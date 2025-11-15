@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import json
 from pathlib import Path
+from collections import Counter
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
@@ -20,6 +21,11 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 
 _TOKEN_PATTERN = re.compile(r"\b\w+\b")
 _MAX_TOKEN_LENGTH = 20
+_PAD_TOKEN = "<pad>"
+_UNK_TOKEN = "<unk>"
+_VOCAB_FILENAME = "imdb_vocab.json"
+_VOCAB_MAX_SIZE = 20000
+_VOCAB_MIN_FREQ = 2
 
 
 ''' Function: _tokenize
@@ -100,8 +106,6 @@ def download_imdb_dataset(
 class IMDBDataset(Dataset):
     """Dataset wrapping IMDB reviews into transformer-ready feature tensors."""
 
-    FEATURE_DIM = 4
-
     ''' Function: __init__
         Description: Load an IMDB split and pre-compute token based features.
         Args:
@@ -127,12 +131,17 @@ class IMDBDataset(Dataset):
             raise ValueError("IMDBDataset split must be either 'train' or 'test'.")
 
         self.max_tokens = int(max_tokens)
-        self.feature_dim = self.FEATURE_DIM
+        cache_base = Path(cache_dir) if cache_dir is not None else Path("data/cache") / dataset_name
+        self.cache_dir = cache_base.expanduser().resolve()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.vocab_path = self.cache_dir / _VOCAB_FILENAME
+        self.pad_idx = 0
+        self.unk_idx = 1
 
         local_texts: List[str] | None = None
         local_labels: List[int] | None = None
 
-        root = dataset_root.expanduser().resolve() if dataset_root else None
+        root = Path(dataset_root).expanduser().resolve() if dataset_root else None
         if root is not None:
             split_path = root / f"{split}.jsonl"
             if split_path.exists():
@@ -146,14 +155,17 @@ class IMDBDataset(Dataset):
             dataset = load_dataset(
                 dataset_name,
                 split=split,
-                cache_dir=str(cache_dir) if cache_dir else None,
+                cache_dir=str(self.cache_dir),
             )
             self.texts = list(dataset["text"])
             self.labels = list(dataset["label"])
         else:
             self.texts = local_texts
             self.labels = local_labels
-        self.max_tokens = int(max_tokens)
+
+        self.vocab = self._load_or_build_vocab(self.texts)
+        self.vocab_size = len(self.vocab)
+        self.feature_dim = self.vocab_size
 
     ''' Function: __len__
         Description: Return the number of review samples available in the dataset.
@@ -165,22 +177,38 @@ class IMDBDataset(Dataset):
     def __len__(self) -> int:
         return len(self.texts)
 
-    ''' Function: _encode_token
-        Description: Convert a token into a feature vector capturing character statistics.
-        Args:
-            token : Input token string.
-        Returns:
-            Feature tensor with normalized statistics (length, alpha ratio, digit ratio, bias).
-    '''
-    def _encode_token(self, token: str) -> torch.Tensor:
-        length = len(token)
-        alpha = sum(char.isalpha() for char in token)
-        digits = sum(char.isdigit() for char in token)
-        clipped_len = min(length, _MAX_TOKEN_LENGTH)
-        length_norm = clipped_len / _MAX_TOKEN_LENGTH
-        alpha_ratio = _normalise(alpha, length)
-        digit_ratio = _normalise(digits, length)
-        return torch.tensor([length_norm, alpha_ratio, digit_ratio, 1.0], dtype=torch.float32)
+    def _load_or_build_vocab(self, texts: List[str]) -> Dict[str, int]:
+        if self.vocab_path.exists():
+            with self.vocab_path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return {str(token): int(index) for token, index in data.items()}
+
+        counter: Counter[str] = Counter()
+        for text in texts:
+            counter.update(token.lower() for token in _tokenize(text))
+
+        vocab = {_PAD_TOKEN: self.pad_idx, _UNK_TOKEN: self.unk_idx}
+        for token, freq in counter.most_common():
+            if freq < _VOCAB_MIN_FREQ:
+                continue
+            if token in vocab:
+                continue
+            vocab[token] = len(vocab)
+            if len(vocab) >= _VOCAB_MAX_SIZE:
+                break
+
+        with self.vocab_path.open("w", encoding="utf-8") as handle:
+            json.dump(vocab, handle, ensure_ascii=False)
+        return vocab
+
+    def _encode_tokens(self, tokens: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
+        token_ids = torch.full((self.max_tokens,), self.pad_idx, dtype=torch.long)
+        attention = torch.zeros(self.max_tokens, dtype=torch.bool)
+        for position, token in enumerate(tokens[: self.max_tokens]):
+            token_id = self.vocab.get(token.lower(), self.unk_idx)
+            token_ids[position] = token_id
+            attention[position] = True
+        return token_ids, attention
 
     ''' Function: __getitem__
         Description: Return padded token features and binary sentiment label for the given index.
@@ -192,12 +220,14 @@ class IMDBDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         text = self.texts[index]
         label = float(self.labels[index])
-        tokens = _tokenize(text)[: self.max_tokens]
-        features = torch.zeros(self.max_tokens, self.FEATURE_DIM, dtype=torch.float32)
-        for position, token in enumerate(tokens):
-            features[position] = self._encode_token(token)
+        tokens = _tokenize(text)
+        token_ids, attention_mask = self._encode_tokens(tokens)
         target = torch.tensor([label], dtype=torch.float32)
-        return features, target
+        inputs = {
+            "inputs": token_ids,
+            "attention_mask": attention_mask,
+        }
+        return inputs, target
 
 
 ''' Function: build_imdb_dataloaders

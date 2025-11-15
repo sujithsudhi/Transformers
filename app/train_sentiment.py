@@ -73,6 +73,9 @@ def main() -> None:
 
     model_kwargs              = asdict(app_config.model)
     model_kwargs["input_dim"] = feature_dim
+    vocab_size = getattr(train_loader.dataset, "vocab_size", None)
+    if vocab_size is not None:
+        model_kwargs["vocab_size"] = vocab_size
     model_config              = TransformersModelConfig(**model_kwargs)
 
     # Instantiate transformer backbone with resolved configuration.

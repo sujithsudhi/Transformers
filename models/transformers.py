@@ -23,6 +23,7 @@ class TransformersModelConfig:
     cls_head_dim      : Optional[int] = None
     num_outputs       : int           = 1
     pooling           : str           = "cls"
+    vocab_size        : Optional[int] = None
 
     ''' Function: __post_init__
         Description: Validate configuration parameters after initialization.
@@ -36,8 +37,10 @@ class TransformersModelConfig:
             raise ValueError("pooling must be either 'cls' or 'mean'.")
         if self.embed_dim % self.num_heads != 0:
             raise ValueError("embed_dim must be divisible by num_heads.")
-        if self.input_dim <= 0:
+        if self.vocab_size is None and self.input_dim <= 0:
             raise ValueError("input_dim must be positive.")
+        if self.vocab_size is not None and self.vocab_size <= 0:
+            raise ValueError("vocab_size must be positive when provided.")
 
 
 class TransformersModel(nn.Module):
@@ -53,7 +56,16 @@ class TransformersModel(nn.Module):
         super().__init__()
         self.config = config
 
-        self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
+        self.token_embedding: Optional[nn.Embedding] = None
+        if config.vocab_size is not None:
+            self.token_embedding = nn.Embedding(
+                config.vocab_size,
+                config.embed_dim,
+                padding_idx=0,
+            )
+            self.input_proj = None
+        else:
+            self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
         self.position   = PositionalEncoding(config.embed_dim,
                                              dropout = config.dropout,
                                             )
@@ -111,13 +123,21 @@ class TransformersModel(nn.Module):
     '''
     def forward_features(self,
                          inputs : Tensor,
-                         mask   : Optional[Tensor] = None,
+                         attention_mask: Optional[Tensor] = None,
                         ) -> Tensor:
         """Produce pooled latent features prior to the classification head."""
-        x = self.input_proj(inputs)
+        if self.token_embedding is not None:
+            if inputs.dtype != torch.long:
+                inputs = inputs.long()
+            x = self.token_embedding(inputs)
+            token_mask = attention_mask if attention_mask is not None else inputs.ne(0)
+        else:
+            x = self.input_proj(inputs)
+            token_mask = attention_mask
         batch_size = x.size(0)
 
-        token_mask = mask.to(dtype=torch.bool) if mask is not None else None
+        if token_mask is not None:
+            token_mask = token_mask.to(dtype=torch.bool)
         if self.config.use_cls_token:
             cls_tokens = self.cls_token.expand(batch_size, -1, -1)
             x = torch.cat([cls_tokens, x], dim=1)
@@ -155,10 +175,10 @@ class TransformersModel(nn.Module):
     '''
     def forward(self,
                 inputs : Tensor,
-                mask   : Optional[Tensor] = None,
+                attention_mask: Optional[Tensor] = None,
                ) -> Tensor:
         """Execute the full model pipeline and return prediction logits."""
         features = self.forward_features(inputs,
-                                         mask,
+                                         attention_mask,
                                         )
         return self.head(features)

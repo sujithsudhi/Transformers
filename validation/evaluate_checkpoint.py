@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 
 import numpy as np
 import torch
@@ -112,9 +112,21 @@ def build_dataloader(
     )
 
 
-def build_model(model_cfg: Dict[str, object]) -> TransformersModel:
+def build_model(model_cfg: Dict[str, object], dataset: Any) -> TransformersModel:
     config_payload = dict(model_cfg)
-    config_payload.setdefault("input_dim", IMDBDataset.FEATURE_DIM)
+    vocab_size = getattr(dataset, "vocab_size", None)
+    feature_dim = getattr(dataset, "feature_dim", None)
+    if "vocab_size" not in config_payload and vocab_size is not None:
+        config_payload["vocab_size"] = int(vocab_size)
+    if "input_dim" not in config_payload:
+        if vocab_size is not None:
+            config_payload["input_dim"] = int(vocab_size)
+        elif feature_dim is not None:
+            config_payload["input_dim"] = int(feature_dim)
+        else:
+            raise ValueError(
+                "Checkpoint does not define input_dim and dataset lacks feature_dim."
+            )
     model_config = TransformersModelConfig(**config_payload)
     return TransformersModel(model_config)
 
@@ -129,9 +141,19 @@ def evaluate_model(
     targets = []
     with torch.no_grad():
         for inputs, labels in dataloader:
-            inputs = inputs.to(device)
+            if isinstance(inputs, dict):
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+            elif isinstance(inputs, (tuple, list)):
+                inputs = tuple(v.to(device) for v in inputs)
+            else:
+                inputs = inputs.to(device)
             labels = labels.to(device)
-            logits = model(inputs).squeeze(-1)
+            if isinstance(inputs, dict):
+                logits = model(**inputs).squeeze(-1)
+            elif isinstance(inputs, (tuple, list)):
+                logits = model(*inputs).squeeze(-1)
+            else:
+                logits = model(inputs).squeeze(-1)
             probs = torch.sigmoid(logits)
             predictions.extend((probs >= 0.5).long().cpu().numpy())
             targets.extend(labels.long().cpu().numpy())
@@ -238,7 +260,8 @@ def main() -> None:
         split=args.split.lower(),
         batch_size_override=args.batch_size,
     )
-    model = build_model(model_cfg)
+    dataset = dataloader.dataset
+    model = build_model(model_cfg, dataset)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
 

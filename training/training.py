@@ -296,8 +296,16 @@ def _progress_iter(iterable: Iterable[Any], desc: str) -> tuple[Iterable[Any], O
     if tqdm is None:
         return iterable, None
     total = _try_len(iterable)
-    bar = tqdm(iterable, desc=desc, total=total, leave=False)
+    bar = tqdm(iterable, desc=desc, total=total, leave=True)
     return bar, bar
+
+
+def _forward_model(model: nn.Module, inputs: Any) -> torch.Tensor:
+    if isinstance(inputs, Mapping):
+        return model(**inputs)
+    if isinstance(inputs, (tuple, list)):
+        return model(*inputs)
+    return model(inputs)
 
 
 def train_one_epoch(model         : nn.Module,
@@ -326,7 +334,7 @@ def train_one_epoch(model         : nn.Module,
             batch = _move_to_device(raw_batch, device, config.non_blocking)
             inputs, targets = _split_batch(batch)
             with autocast(enabled=scaler.is_enabled()):
-                outputs = model(inputs)
+                outputs = _forward_model(model, inputs)
                 loss = loss_fn(outputs, targets)
                 loss_to_backward = loss / accum_steps
 
@@ -412,7 +420,7 @@ def evaluate(model         : nn.Module,
             for raw_batch in iterator:
                 batch = _move_to_device(raw_batch, device, non_blocking)
                 inputs, targets = _split_batch(batch)
-                outputs = model(inputs)
+                outputs = _forward_model(model, inputs)
                 loss = loss_fn(outputs, targets)
 
                 total_loss += loss.item()

@@ -199,15 +199,15 @@ class MultiHeadSelfAttention(nn.Module):
             if mask.dtype != torch.bool:
                 mask = mask > 0
             if mask.dim() == 2:
-                mask = mask.unsqueeze(1) & mask.unsqueeze(2)
-                mask = mask.repeat_interleave(self.num_heads, dim=0)
+                mask = mask.unsqueeze(1)
             elif mask.dim() == 3:
-                if mask.size(0) == batch_size:
-                    mask = mask.repeat_interleave(self.num_heads, dim=0)
-                elif mask.size(0) != batch_size * self.num_heads:
-                    raise ValueError("Attention mask batch dimension mismatch.")
+                pass
             else:
                 raise ValueError("Unsupported attention mask rank.")
+            if mask.size(0) == batch_size:
+                mask = mask.repeat_interleave(self.num_heads, dim=0)
+            elif mask.size(0) != batch_size * self.num_heads:
+                raise ValueError("Attention mask batch dimension mismatch.")
             attn_mask = mask.to(q.device)
 
         attn_output = self.attention(q, k, v, attn_mask)

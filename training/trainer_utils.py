@@ -120,17 +120,70 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
         return
 
     plt.figure(figsize=(8, 5))
+    ax = plt.gca()
+
+    train_epochs, train_losses = [], []
     if train_points:
-        epochs, losses = zip(*train_points)
-        plt.plot(epochs, losses, marker="o", label="Train loss")
+        train_epochs, train_losses = zip(*train_points)
+        ax.plot(
+            train_epochs,
+            train_losses,
+            marker="o",
+            linewidth=2.0,
+            color="#1f77b4",
+            label="Train loss",
+        )
+
+    val_epochs, val_losses = [], []
     if val_points:
-        epochs, losses = zip(*val_points)
-        plt.plot(epochs, losses, marker="o", label="Validation loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training history")
-    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
-    plt.legend()
+        val_epochs, val_losses = zip(*val_points)
+        ax.plot(
+            val_epochs,
+            val_losses,
+            marker="s",
+            linewidth=2.0,
+            color="#d62728",
+            label="Validation loss",
+        )
+        best_idx = int(min(range(len(val_losses)), key=lambda idx: val_losses[idx]))
+        best_epoch = val_epochs[best_idx]
+        best_loss = val_losses[best_idx]
+        ax.scatter(
+            [best_epoch],
+            [best_loss],
+            color="#d62728",
+            marker="x",
+            s=80,
+            zorder=5,
+        )
+        ax.annotate(
+            f"best val {best_loss:.4f}",
+            xy=(best_epoch, best_loss),
+            xytext=(5, -10),
+            textcoords="offset points",
+            fontsize=9,
+            color="#d62728",
+        )
+
+    if train_points and val_points:
+        train_map = {epoch: loss for epoch, loss in train_points}
+        val_map = {epoch: loss for epoch, loss in val_points}
+        shared_epochs = sorted(set(train_map).intersection(val_map))
+        if shared_epochs:
+            ax.fill_between(
+                shared_epochs,
+                [train_map[epoch] for epoch in shared_epochs],
+                [val_map[epoch] for epoch in shared_epochs],
+                color="#9ecae1",
+                alpha=0.2,
+                label="Train-Val gap",
+            )
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training history")
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+    ax.legend()
     plt.tight_layout()
     plt.savefig(resolved)
     plt.close()
