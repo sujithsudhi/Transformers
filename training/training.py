@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Union
 
@@ -10,7 +11,7 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau
 
@@ -333,7 +334,7 @@ def train_one_epoch(model         : nn.Module,
         for step, raw_batch in enumerate(iterator, start=1):
             batch = _move_to_device(raw_batch, device, config.non_blocking)
             inputs, targets = _split_batch(batch)
-            with autocast(enabled=scaler.is_enabled()):
+            with autocast(device_type=device.type, enabled=scaler.is_enabled()):
                 outputs = _forward_model(model, inputs)
                 loss = loss_fn(outputs, targets)
                 loss_to_backward = loss / accum_steps
@@ -464,16 +465,19 @@ class Trainer:
                  scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
                  logger       : Optional[Callable[[Dict[str, Any]], None]] = None,
                 ) -> None:
-        self.model = model.to(torch.device(config.device))
-        self.optimizer = optimizer
-        self.loss_fn = loss_fn
+        self.model        = model.to(torch.device(config.device))
+        self.optimizer    = optimizer
+        self.loss_fn      = loss_fn
         self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.config = config
-        self.scheduler = scheduler
+        self.val_loader   = val_loader
+        self.config       = config
+        self.scheduler    = scheduler
         self.scaler = GradScaler(enabled=config.use_amp and torch.cuda.is_available())
         self.history: list[Dict[str, Any]] = []
         self.logger = logger
+        self.best_state_dict: Optional[Dict[str, torch.Tensor]] = None
+        self.best_val_loss: float = float("inf")
+        self.best_epoch: Optional[int] = None
 
     ''' Function: fit
         Description: Train model for configured number of epochs with validation.
@@ -493,7 +497,6 @@ class Trainer:
             lr_patience is not None and lr_patience > 0 and self.val_loader is not None
         )
         lr_factor = self.config.lr_reduction_factor
-        best_val_loss = float("inf")
         stagnant_epochs = 0
         stagnant_lr_epochs = 0
 
@@ -520,14 +523,20 @@ class Trainer:
 
             should_stop_after_epoch = False
             lr_reduced = False
+            record_best = False
             if (monitor_early_stop or monitor_lr_reduction) and val_metrics is not None:
                 current_loss = val_metrics.get("loss")
                 if current_loss is not None:
                     val_loss = float(current_loss)
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
+                    if val_loss < self.best_val_loss:
+                        self.best_val_loss = val_loss
                         stagnant_epochs = 0
                         stagnant_lr_epochs = 0
+                        self.best_state_dict = {key: tensor.detach().cpu().clone()
+                                                for key, tensor in self.model.state_dict().items()
+                                               }
+                        self.best_epoch = epoch
+                        record_best = True
                     else:
                         stagnant_epochs += 1
                         stagnant_lr_epochs += 1
@@ -546,6 +555,8 @@ class Trainer:
             }
             if lr_reduced:
                 record["lr_reduced"] = True
+            if record_best:
+                record["best_checkpoint"] = True
             if should_stop_after_epoch:
                 record["early_stop_triggered"] = True
             self.history.append(record)
@@ -584,6 +595,11 @@ class Trainer:
             group["lr"] = current_lr * factor
             updated = True
         return updated
+
+    def best_model_state_dict(self) -> Dict[str, torch.Tensor]:
+        if self.best_state_dict is not None:
+            return copy.deepcopy(self.best_state_dict)
+        return self.model.state_dict()
 
 
 ''' Function: fit

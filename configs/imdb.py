@@ -44,7 +44,7 @@ class IMDBModelConfig(BaseModelConfig):
 class IMDBTrainingConfig(BaseTrainingConfig):
     """Training loop defaults for IMDB sentiment fine-tuning."""
 
-    epochs                  : int        = 10
+    epochs                  : int        = 300
     lr                      : float      = 3e-4
     weight_decay            : float      = 0.01
     early_stopping_patience : int | None = 10
@@ -83,15 +83,15 @@ class IMDBLossConfig(BaseLossConfig):
 class IMDBConfig(AppConfig):
     """Application config describing IMDB sentiment fine-tuning."""
 
-    name         : str                 = "imdb"
-    data         : IMDBDataConfig      = field(default_factory=IMDBDataConfig)
-    model        : IMDBModelConfig     = field(default_factory=IMDBModelConfig)
-    training     : IMDBTrainingConfig  = field(default_factory=IMDBTrainingConfig)
-    dataloader   : IMDBDataloaderConfig = field(default_factory=IMDBDataloaderConfig)
-    optimizer    : IMDBOptimizerConfig = field(default_factory=IMDBOptimizerConfig)
-    loss         : IMDBLossConfig      = field(default_factory=IMDBLossConfig)
-    history_path : Path                = Path("results/imdb_history.json")
-    plot_path    : Path                = Path("results/imdb_history.png")
-    checkpoint_path: Path              = Path("results/imdb_transformer.pt")
-    wandb_disabled: bool               = False
-    wandb_project: str                 = "transformers-imdb"
+    name            : str                  = "imdb"
+    data            : IMDBDataConfig       = field(default_factory=IMDBDataConfig)
+    model           : IMDBModelConfig      = field(default_factory=IMDBModelConfig)
+    training        : IMDBTrainingConfig   = field(default_factory=IMDBTrainingConfig)
+    dataloader      : IMDBDataloaderConfig = field(default_factory=IMDBDataloaderConfig)
+    optimizer       : IMDBOptimizerConfig  = field(default_factory=IMDBOptimizerConfig)
+    loss            : IMDBLossConfig       = field(default_factory=IMDBLossConfig)
+    history_path    : Path                 = Path("results/imdb_history.json")
+    plot_path       : Path                 = Path("results/imdb_history.png")
+    checkpoint_path : Path                 = Path("results/imdb_transformer.pt")
+    wandb_disabled  : bool                 = False
+    wandb_project   : str                  = "transformers-imdb"

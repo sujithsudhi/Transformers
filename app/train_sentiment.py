@@ -45,10 +45,12 @@ def main() -> None:
     torch.manual_seed(42)
 
     app_config = load_config_target("configs.imdb:IMDBConfig")
+
     wandb_api_key = getattr(app_config, "wandb_api_key", None)
-    print(wandb_api_key)
+
     if wandb_api_key:
         os.environ["WANDB_API_KEY"] = str(wandb_api_key)
+
     if getattr(app_config, "wandb_disabled", False):
         os.environ["WANDB_DISABLED"] = "true"
     else:
@@ -104,7 +106,7 @@ def main() -> None:
                       loss_fn      = loss_fn,
                       train_loader = train_loader,
                       config       = training_config,
-                      val_loader   = None,
+                      val_loader   = test_loader,
                       logger       = wandb_logger,
                      )
     history = trainer.fit()
@@ -126,14 +128,14 @@ def main() -> None:
 
     checkpoint_path = checkpoint_path.expanduser().resolve()
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    best_state = trainer.best_model_state_dict()
     torch.save(
         {
-            "model_state_dict": trainer.model.state_dict(),
-            "config": {
-                "model": _to_serializable(app_config.model),
-                "training": _to_serializable(app_config.training),
-                "data": _to_serializable(app_config.data),
-            },
+            "model_state_dict"   :  best_state,
+            "config": {"model"   : _to_serializable(app_config.model),
+                       "training": _to_serializable(app_config.training),
+                       "data"    : _to_serializable(app_config.data),
+                      },
         },
         checkpoint_path,
     )
@@ -156,7 +158,7 @@ def main() -> None:
         wandb_run.finish()
 
     summary: Dict[str, Any] = {"train_history": history, "test_metrics": test_metrics}
-    print(json.dumps(summary, indent=2))
+    
 
 
 if __name__ == "__main__":

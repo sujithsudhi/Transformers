@@ -119,13 +119,28 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     if not train_points and not val_points:
         return
 
-    plt.figure(figsize=(8, 5))
-    ax = plt.gca()
+    val_accuracy_points = [
+        (entry.get("epoch"), entry.get("val", {}).get("accuracy"))
+        for entry in history
+        if entry.get("val") and entry.get("val", {}).get("accuracy") is not None
+    ]
+    train_accuracy_points = [
+        (entry.get("epoch"), entry.get("train", {}).get("accuracy"))
+        for entry in history
+        if entry.get("train") and entry.get("train", {}).get("accuracy") is not None
+    ]
+
+    has_accuracy = bool(train_accuracy_points or val_accuracy_points)
+    num_rows = 2 if has_accuracy else 1
+    fig, axes = plt.subplots(num_rows, 1, figsize=(8, 4 * num_rows), sharex=True)
+    if num_rows == 1:
+        axes = [axes]
+    loss_ax = axes[0]
 
     train_epochs, train_losses = [], []
     if train_points:
         train_epochs, train_losses = zip(*train_points)
-        ax.plot(
+        loss_ax.plot(
             train_epochs,
             train_losses,
             marker="o",
@@ -137,7 +152,7 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     val_epochs, val_losses = [], []
     if val_points:
         val_epochs, val_losses = zip(*val_points)
-        ax.plot(
+        loss_ax.plot(
             val_epochs,
             val_losses,
             marker="s",
@@ -148,7 +163,7 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
         best_idx = int(min(range(len(val_losses)), key=lambda idx: val_losses[idx]))
         best_epoch = val_epochs[best_idx]
         best_loss = val_losses[best_idx]
-        ax.scatter(
+        loss_ax.scatter(
             [best_epoch],
             [best_loss],
             color="#d62728",
@@ -156,7 +171,7 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
             s=80,
             zorder=5,
         )
-        ax.annotate(
+        loss_ax.annotate(
             f"best val {best_loss:.4f}",
             xy=(best_epoch, best_loss),
             xytext=(5, -10),
@@ -170,7 +185,7 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
         val_map = {epoch: loss for epoch, loss in val_points}
         shared_epochs = sorted(set(train_map).intersection(val_map))
         if shared_epochs:
-            ax.fill_between(
+            loss_ax.fill_between(
                 shared_epochs,
                 [train_map[epoch] for epoch in shared_epochs],
                 [val_map[epoch] for epoch in shared_epochs],
@@ -179,11 +194,41 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
                 label="Train-Val gap",
             )
 
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss")
-    ax.set_title("Training history")
-    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
-    ax.legend()
+    loss_ax.set_ylabel("Loss")
+    loss_ax.set_title("Training / Validation Loss")
+    loss_ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+    loss_ax.legend()
+
+    if has_accuracy:
+        acc_ax = axes[1]
+        if train_accuracy_points:
+            epochs_acc, acc_values = zip(*train_accuracy_points)
+            acc_ax.plot(
+                epochs_acc,
+                acc_values,
+                marker="o",
+                linewidth=2.0,
+                color="#2ca02c",
+                label="Train accuracy",
+            )
+        if val_accuracy_points:
+            epochs_acc, acc_values = zip(*val_accuracy_points)
+            acc_ax.plot(
+                epochs_acc,
+                acc_values,
+                marker="s",
+                linewidth=2.0,
+                color="#ff7f0e",
+                label="Validation accuracy",
+            )
+        acc_ax.set_xlabel("Epoch")
+        acc_ax.set_ylabel("Accuracy")
+        acc_ax.set_title("Training / Validation Accuracy")
+        acc_ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+        acc_ax.legend()
+    else:
+        loss_ax.set_xlabel("Epoch")
+
     plt.tight_layout()
     plt.savefig(resolved)
     plt.close()

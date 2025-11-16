@@ -118,25 +118,25 @@ class IMDBDataset(Dataset):
         Returns:
             None
     '''
-    def __init__(
-        self,
-        split       : str,
-        max_tokens  : int = 256,
-        cache_dir   : Optional[Path] = None,
-        dataset_name: str = "imdb",
-        dataset_root: Optional[Path] = None,
-        download    : bool = True,
-    ) -> None:
+    def __init__(self,
+                 split       : str,
+                 max_tokens  : int = 256,
+                 cache_dir   : Optional[Path] = None,
+                 dataset_name: str = "imdb",
+                 dataset_root: Optional[Path] = None,
+                 download    : bool = True,
+                ) -> None:
+        
         if split not in {"train", "test"}:
             raise ValueError("IMDBDataset split must be either 'train' or 'test'.")
 
         self.max_tokens = int(max_tokens)
-        cache_base = Path(cache_dir) if cache_dir is not None else Path("data/cache") / dataset_name
-        self.cache_dir = cache_base.expanduser().resolve()
+        cache_base      = Path(cache_dir) if cache_dir is not None else Path("data/cache") / dataset_name
+        self.cache_dir  = cache_base.expanduser().resolve()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.vocab_path = self.cache_dir / _VOCAB_FILENAME
-        self.pad_idx = 0
-        self.unk_idx = 1
+        self.pad_idx    = 0
+        self.unk_idx    = 1
 
         local_texts: List[str] | None = None
         local_labels: List[int] | None = None
