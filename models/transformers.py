@@ -58,11 +58,11 @@ class TransformersModel(nn.Module):
 
         self.token_embedding: Optional[nn.Embedding] = None
         if config.vocab_size is not None:
-            self.token_embedding = nn.Embedding(
-                config.vocab_size,
-                config.embed_dim,
-                padding_idx=0,
-            )
+            
+            self.token_embedding = nn.Embedding(config.vocab_size,
+                                                config.embed_dim,
+                                                padding_idx=0,
+                                               )
             self.input_proj = None
         else:
             self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
@@ -80,12 +80,11 @@ class TransformersModel(nn.Module):
         self.norm = nn.LayerNorm(config.embed_dim)
 
         if config.cls_head_dim:
-            self.head = nn.Sequential(
-                nn.Linear(config.embed_dim, config.cls_head_dim),
-                nn.GELU(),
-                nn.Dropout(config.dropout),
-                nn.Linear(config.cls_head_dim, config.num_outputs),
-            )
+            self.head = nn.Sequential(nn.Linear(config.embed_dim, config.cls_head_dim),
+                                                nn.GELU(),
+                                                nn.Dropout(config.dropout),
+                                                nn.Linear(config.cls_head_dim, config.num_outputs),
+                                     )
         else:
             self.head = nn.Linear(config.embed_dim, config.num_outputs)
 

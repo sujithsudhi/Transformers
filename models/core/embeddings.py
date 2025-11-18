@@ -26,6 +26,7 @@ class TokenEmbedding(nn.Module):
                  embed_dim   : int,
                  padding_idx : Optional[int] = None,
                 ) -> None:
+        
         super().__init__()
         
         self.embedding = nn.Embedding(num_embeddings = vocab_size,
@@ -58,14 +59,17 @@ class PositionalEncoding(nn.Module):
     '''
     def __init__(self,
                  embed_dim : int,
-                 max_len   : int = 10000,
+                 max_len   : int   = 10000,
                  dropout   : float = 0.0,
                 ) -> None:
+        
         super().__init__()
+
         position = torch.arange(0, max_len, dtype = torch.float32).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, embed_dim, 2, dtype = torch.float32) 
                              * (-math.log(10000.0) / embed_dim)
                             )
+        
         pe = torch.zeros(max_len, embed_dim, dtype = torch.float32)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)

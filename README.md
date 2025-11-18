@@ -113,6 +113,37 @@ flowchart LR
     K -- served via --> Scripts
 ```
 
+## Architecture Overview
+
+The IMDB model follows a compact Transformer encoder pipeline with optional CLS token
+pooling and a lightweight classification head. Components below map directly to
+`models/transformers.py` and `models/core/`.
+
+```mermaid
+flowchart LR
+    subgraph Inputs
+        A["Review text\n(token IDs or features)"]
+    end
+    subgraph Embedding
+        B["Token Embedding\n(nn.Embedding)"]
+        B2["Linear Projection\n(nn.Linear)"]
+        C["PositionalEncoding\n(+ optional CLS token)"]
+    end
+    subgraph Encoder
+        D["TransformerEncoderLayer × depth\n(MHA + MLP + residual/LayerNorm)"]
+        E["LayerNorm"]
+    end
+    subgraph Head
+        F["Pooling\n(CLS or mean)"]
+        G["Classification Head\n(linear or MLP head)"]
+    end
+    H["Sentiment Logits"]
+
+    A -->|token IDs| B --> C
+    A -->|continuous features| B2 --> C
+    C --> D --> E --> F --> G --> H
+```
+
 ## Visualisation
 
 Use helpers in `viz/` (e.g., `viz.plots.plot_loss_curves`) to quickly chart loss curves,
