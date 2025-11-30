@@ -20,12 +20,14 @@ from .base import (AppConfig,
 class IMDBDataConfig(BaseDataConfig):
     """Data loading parameters for the IMDB sentiment dataset."""
 
+    data_path    : Path = Path("/media/4TB/Datasets/Basics/IMDB")
     cache_dir    : Path = Path("data/cache/imdb")
     batch_size   : int  = 512
     max_tokens   : int  = 256
     num_workers  : int  = 0
     dataset_name : str  = "imdb"
     dataset_root : Path = Path("data/imdb")
+    url_path     : str  = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
 
 
 @dataclass(frozen=True)

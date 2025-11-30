@@ -1,290 +1,189 @@
-"""IMDB dataset utilities for sentiment classification."""
-
-from __future__ import annotations
-
-import re
-import json
+import os
+import sys
+import tarfile, urllib.request
 from pathlib import Path
-from collections import Counter
-from typing import Dict, Iterable, List, Optional, Tuple
 
+import logging
+
+from tqdm import tqdm
 import torch
-from torch.utils.data import DataLoader, Dataset
-
-try:
-    from datasets import load_dataset
-except ImportError as exc:  # pragma: no cover - optional dependency
-    raise RuntimeError(
-        "The 'datasets' package is required for IMDB utilities. Install it via 'pip install datasets'."
-    ) from exc
+from torch.utils.data import Dataset, DataLoader
+from transformers import AutoTokenizer
 
 
-_TOKEN_PATTERN = re.compile(r"\b\w+\b")
-_MAX_TOKEN_LENGTH = 20
-_PAD_TOKEN = "<pad>"
-_UNK_TOKEN = "<unk>"
-_VOCAB_FILENAME = "imdb_vocab.json"
-_VOCAB_MAX_SIZE = 20000
-_VOCAB_MIN_FREQ = 2
+logging.basicConfig(level=logging.INFO, 
+                    format="%(asctime)s | %(levelname)s | %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S",)
 
+from logging import info, warning
 
-''' Function: _tokenize
-    Description: Tokenize a review into word-level tokens using regex boundaries.
-    Args:
-        text : Input text string to tokenize.
-    Returns:
-        List of word tokens extracted from text.
-'''
-def _tokenize(text: str) -> List[str]:
-    return _TOKEN_PATTERN.findall(text)
-
-
-''' Function: _normalise
-    Description: Normalise a value by its denominator, guarding against division by zero.
-    Args:
-        value       : Numerator value to normalize.
-        denominator : Denominator for normalization.
-    Returns:
-        Normalized value or 0.0 if denominator is non-positive.
-'''
-def _normalise(value: float, denominator: float) -> float:
-    if denominator <= 0:
-        return 0.0
-    return value / denominator
-
-
-''' Function: _load_local_split
-    Description: Load IMDB split from local JSONL file.
-    Args:
-        path : Path to JSONL file containing text and label records.
-    Returns:
-        Tuple of text list and label list.
-'''
-def _load_local_split(path: Path) -> Tuple[List[str], List[int]]:
-    texts: List[str] = []
-    labels: List[int] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            payload = json.loads(line)
-            texts.append(str(payload["text"]))
-            labels.append(int(payload["label"]))
-    return texts, labels
-
-
-''' Function: download_imdb_dataset
-    Description: Download the IMDB dataset and materialise JSONL splits under target directory.
-    Args:
-        target_dir   : Directory where dataset splits will be saved.
-        dataset_name : Name of the dataset to download from HuggingFace.
-        overwrite    : Whether to overwrite existing files.
-    Returns:
-        Dictionary mapping split names to file paths.
-'''
-def download_imdb_dataset(
-    target_dir: Path = Path("data/imdb"),
-    dataset_name: str = "imdb",
-    overwrite: bool = False,
-) -> Dict[str, Path]:
-    target = target_dir.expanduser().resolve()
-    target.mkdir(parents=True, exist_ok=True)
-    expected_files = {split: target / f"{split}.jsonl" for split in ("train", "test")}
-    if not overwrite and all(path.exists() for path in expected_files.values()):
-        return expected_files
-
-    dataset = load_dataset(dataset_name)
-    created: Dict[str, Path] = {}
-    for split, path in expected_files.items():
-        records = dataset[split]
-        with path.open("w", encoding="utf-8") as handle:
-            for text, label in zip(records["text"], records["label"]):
-                json.dump({"text": text, "label": int(label)}, handle)
-                handle.write("\n")
-        created[split] = path
-    return created
-
-
-class IMDBDataset(Dataset):
-    """Dataset wrapping IMDB reviews into transformer-ready feature tensors."""
-
-    ''' Function: __init__
-        Description: Load an IMDB split and pre-compute token based features.
-        Args:
-            split        : Dataset split ('train' or 'test').
-            max_tokens   : Maximum number of tokens per review.
-            cache_dir    : Directory for caching downloaded datasets.
-            dataset_name : Name of the dataset to load.
-            dataset_root : Local directory containing JSONL files.
-            download     : Whether to download dataset if not found locally.
-        Returns:
-            None
-    '''
-    def __init__(self,
-                 split       : str,
-                 max_tokens  : int = 256,
-                 cache_dir   : Optional[Path] = None,
-                 dataset_name: str = "imdb",
-                 dataset_root: Optional[Path] = None,
-                 download    : bool = True,
-                ) -> None:
+class IMDBDataRead:
+    def __init__(self, 
+                 path=None,
+                 url_path= "",
+                 trainTestValRation = {"Train" : 70, "Test": 20, "Val": 10}):
         
-        if split not in {"train", "test"}:
-            raise ValueError("IMDBDataset split must be either 'train' or 'test'.")
+        self.data_split = trainTestValRation
+        self.data_path  = Path(path)
+        self.url_path   = url_path 
 
-        self.max_tokens = int(max_tokens)
-        cache_base      = Path(cache_dir) if cache_dir is not None else Path("data/cache") / dataset_name
-        self.cache_dir  = cache_base.expanduser().resolve()
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.vocab_path = self.cache_dir / _VOCAB_FILENAME
-        self.pad_idx    = 0
-        self.unk_idx    = 1
+    def _read_files(self, path, format="*.txt"):
+        """
+        """
 
-        local_texts: List[str] | None = None
-        local_labels: List[int] | None = None
+        reviews = {"texts": [], "label": []}
+        
+        file_list = list(path.glob(format))
+        
+        for f in tqdm(file_list, desc="Reading reviews"):
+            
+            label = 1 if f.parent.name == "pos" else 0
+            text  = f.read_text(encoding="utf-8")
+            reviews["texts"].append(text)
+            reviews["label"].append(label)
 
-        root = Path(dataset_root).expanduser().resolve() if dataset_root else None
-        if root is not None:
-            split_path = root / f"{split}.jsonl"
-            if split_path.exists():
-                local_texts, local_labels = _load_local_split(split_path)
-            elif download:
-                download_imdb_dataset(root, dataset_name=dataset_name, overwrite=False)
-                if split_path.exists():
-                    local_texts, local_labels = _load_local_split(split_path)
+        return reviews
+    
+    def _load_from_local(self, path):
+        """
+        """
 
-        if local_texts is None or local_labels is None:
-            dataset = load_dataset(
-                dataset_name,
-                split=split,
-                cache_dir=str(self.cache_dir),
-            )
-            self.texts = list(dataset["text"])
-            self.labels = list(dataset["label"])
+        train_path = path / "train"
+        test_path  = path / "test"
+
+        if train_path.exists() and test_path.exists() and train_path.is_dir() and test_path.is_dir():
+            info("Train and Test data for IMDB data already exists")
+
+            train_pos = self._read_files(path=train_path / "pos")
+            train_neg = self._read_files(path=train_path / "neg")
+
+            test_pos = self._read_files(path=test_path / "pos")
+            test_neg = self._read_files(path=test_path / "neg")
+
+            train_data = {"text": train_pos["texts"] + train_neg["texts"], "label": train_pos["label"] + train_neg["label"]}
+            test_data = {"text": test_pos["texts"] + test_neg["texts"], "label": test_pos["label"] + test_neg["label"]}
+
+            info("Read training and test datasets")
+            info("Number of train dataset : positive - {}, negative {}".format(len(train_pos["texts"]), len(train_neg["texts"])))
+            info("Number of test dataset  : positive - {}, negative {}".format(len(test_pos["texts"]), len(test_neg["texts"])))
+        
+        return {"Train":train_data, "Test": test_data}
+
+            
+    def extract_data(self):
+        """
+        """
+
+        data_path  = self._downloadDataset()
+
+        dataset = self._load_from_local(path=data_path)
+
+        return dataset
+
+
+
+    def _downloadDataset(self):
+        """
+        """
+
+        self.data_path.mkdir(parents=True, exist_ok=True)
+
+        tar_path = self.data_path / "aclImdb_v1.tar.gz"
+        if not tar_path.exists():
+            info("Downloading dataset from {} to the location : {}".format(self.url_path, tar_path))
+            urllib.request.urlretrieve(self.url_path, tar_path)
         else:
-            self.texts = local_texts
-            self.labels = local_labels
+            info("tar file already exists")
+        
+        extract_path = self.data_path / "aclImdb"
+        if not extract_path.exists():
+            info("Extracing IMDB dataset..")
+            with tarfile.open(tar_path, "r:gz") as tar:
+                tar.extractall(path=self.data_path)
+        else:
+            info("Data is already extracted in the location : {}".format(extract_path))
 
-        self.vocab = self._load_or_build_vocab(self.texts)
-        self.vocab_size = len(self.vocab)
-        self.feature_dim = self.vocab_size
+        return extract_path
+            
 
-    ''' Function: __len__
-        Description: Return the number of review samples available in the dataset.
-        Args:
-            None
-        Returns:
-            Number of samples in the dataset.
-    '''
-    def __len__(self) -> int:
+class Tokenize(Dataset):
+
+    def __init__(self, texts, labels, tokenizer_name="bert-base-uncased", max_length = 256):
+        
+        self.texts        = texts
+        self.labels       = labels 
+        self.tokenizer    = AutoTokenizer.from_pretrained(tokenizer_name)
+        self.max_length   = max_length
+
+        # Expose metadata expected by the trainer/model wiring.
+        self.vocab_size   = self.tokenizer.vocab_size
+        self.feature_dim  = max_length
+
+    def __len__(self):
         return len(self.texts)
+    
+    def __getitem__(self, index):
+        text  = self.texts[index]
+        label = self.labels[index]
 
-    def _load_or_build_vocab(self, texts: List[str]) -> Dict[str, int]:
-        if self.vocab_path.exists():
-            with self.vocab_path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-            return {str(token): int(index) for token, index in data.items()}
+        encoded = self.tokenizer(text,
+                                 truncation     = True,
+                                 padding        = "max_length",
+                                 max_length     = self.max_length,
+                                 return_tensors = "pt")
+        target = torch.tensor(label, dtype=torch.float32).unsqueeze(0)
+        return { "inputs"  : {"inputs"         : encoded["input_ids"].squeeze(0),
+                              "attention_mask" : encoded["attention_mask"].squeeze(0)},
+                 "targets" : target,
+               }
 
-        counter: Counter[str] = Counter()
-        for text in texts:
-            counter.update(token.lower() for token in _tokenize(text))
+class DataPrep:
+    def __init__(self, 
+                 data_path,
+                 batch_size  = 32,
+                 num_workers = 8,
+                 max_tokens  = 256,
+                 url_path    = "" ):
+        
+        self.data_path   = data_path
+        self.batch_size  = batch_size
+        self.num_workers = num_workers
+        self.max_tokens  = max_tokens
+        self.url_path    = url_path
+        self.feat_dim    = None
 
-        vocab = {_PAD_TOKEN: self.pad_idx, _UNK_TOKEN: self.unk_idx}
-        for token, freq in counter.most_common():
-            if freq < _VOCAB_MIN_FREQ:
-                continue
-            if token in vocab:
-                continue
-            vocab[token] = len(vocab)
-            if len(vocab) >= _VOCAB_MAX_SIZE:
-                break
+    def prep(self):
+        """
+        """
+        dataloader = IMDBDataRead(path=self.data_path, url_path= self.url_path)
+        split      = dataloader.extract_data()
 
-        with self.vocab_path.open("w", encoding="utf-8") as handle:
-            json.dump(vocab, handle, ensure_ascii=False)
-        return vocab
+        train_ds   = Tokenize(texts=split["Train"]["text"],
+                              labels=split["Train"]["label"],
+                              tokenizer_name="bert-base-uncased",
+                              max_length=self.max_tokens)
+        
+        test_ds   = Tokenize(texts=split["Test"]["text"],
+                             labels=split["Test"]["label"],
+                             tokenizer_name="bert-base-uncased",
+                             max_length=self.max_tokens)
+        
+        train_loader = DataLoader(train_ds, 
+                                  batch_size=self.batch_size, 
+                                  shuffle=True,
+                                  num_workers=self.num_workers,
+                                  drop_last=False)
 
-    def _encode_tokens(self, tokens: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
-        token_ids = torch.full((self.max_tokens,), self.pad_idx, dtype=torch.long)
-        attention = torch.zeros(self.max_tokens, dtype=torch.bool)
-        for position, token in enumerate(tokens[: self.max_tokens]):
-            token_id = self.vocab.get(token.lower(), self.unk_idx)
-            token_ids[position] = token_id
-            attention[position] = True
-        return token_ids, attention
+        test_loader  = DataLoader(test_ds, 
+                                  batch_size=self.batch_size,
+                                  num_workers=self.num_workers,
+                                  drop_last=False)
 
-    ''' Function: __getitem__
-        Description: Return padded token features and binary sentiment label for the given index.
-        Args:
-            index : Sample index in the dataset.
-        Returns:
-            Tuple of feature tensor and label tensor.
-    '''
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        text = self.texts[index]
-        label = float(self.labels[index])
-        tokens = _tokenize(text)
-        token_ids, attention_mask = self._encode_tokens(tokens)
-        target = torch.tensor([label], dtype=torch.float32)
-        inputs = {
-            "inputs": token_ids,
-            "attention_mask": attention_mask,
-        }
-        return inputs, target
+        return train_loader, test_loader
 
 
-''' Function: build_imdb_dataloaders
-    Description: Construct train and test dataloaders for IMDB sentiment classification.
-    Args:
-        batch_size   : Number of samples per batch.
-        max_tokens   : Maximum tokens per review.
-        num_workers  : Number of worker processes for data loading.
-        cache_dir    : Directory for caching datasets.
-        dataset_name : Name of the dataset to load.
-        dataset_root : Local directory with JSONL files.
-        download     : Whether to download dataset if not found.
-    Returns:
-        Tuple of train DataLoader and test DataLoader.
-'''
-def build_imdb_dataloaders(
-    batch_size : int = 32,
-    max_tokens : int = 256,
-    num_workers: int = 0,
-    cache_dir  : Optional[Path] = None,
-    dataset_name: str = "imdb",
-    dataset_root: Optional[Path] = None,
-    download    : bool = True,
-) -> Tuple[DataLoader, DataLoader]:
-    cache_dir = cache_dir or Path("data/cache")
-    cache_dir = cache_dir.expanduser().resolve()
-    cache_dir.mkdir(parents=True, exist_ok=True)
+if __name__ == "__main__":  
+    print("This is main")  
 
-    if dataset_root is not None and download:
-        download_imdb_dataset(dataset_root, dataset_name=dataset_name, overwrite=False)
 
-    # Prepare dataset instances for each split with shared configuration.
-    train_dataset = IMDBDataset(split       = "train",
-                                max_tokens  = max_tokens,
-                                cache_dir   = cache_dir,
-                                dataset_name= dataset_name,
-                                dataset_root= dataset_root,
-                                download    = download,
-                               )
-    test_dataset = IMDBDataset(split       = "test",
-                               max_tokens  = max_tokens,
-                               cache_dir   = cache_dir,
-                               dataset_name= dataset_name,
-                               dataset_root= dataset_root,
-                               download    = download,
-                              )
-
-    train_loader = DataLoader(dataset    = train_dataset,
-                              batch_size = batch_size,
-                              shuffle    = True,
-                              num_workers= num_workers,
-                              drop_last  = False,
-                             )
-    test_loader = DataLoader(dataset    = test_dataset,
-                             batch_size = batch_size,
-                             shuffle    = False,
-                             num_workers= num_workers,
-                             drop_last  = False,
-                            )
-    return train_loader, test_loader
+        

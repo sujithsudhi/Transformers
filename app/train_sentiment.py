@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data import build_imdb_dataloaders
+from data import DataPrep
 
 from models import TransformersModel, TransformersModelConfig
 from tool.utils import _to_serializable, load_config_target
@@ -63,13 +63,13 @@ def main() -> None:
 
     data_cfg = app_config.data
 
-    train_loader, test_loader = build_imdb_dataloaders(batch_size    = data_cfg.batch_size,
-                                                       max_tokens    = data_cfg.max_tokens,
-                                                       num_workers   = data_cfg.num_workers,
-                                                       cache_dir     = data_cfg.cache_dir,
-                                                       dataset_name  = getattr(data_cfg, "dataset_name", "imdb"),
-                                                       dataset_root  = getattr(data_cfg, "dataset_root", Path("data/imdb")),
-                                                      )
+    ImdbData =                  DataPrep(data_path     = data_cfg.data_path,
+                                         batch_size    = data_cfg.batch_size,
+                                         max_tokens    = data_cfg.max_tokens,
+                                         num_workers   = data_cfg.num_workers,
+                                         url_path      = data_cfg.url_path)
+    
+    train_loader, test_loader = ImdbData.prep()
     # Extract feature dimension from dataset to configure projection layer.
     feature_dim = train_loader.dataset.feature_dim  # type: ignore[attr-defined]
 
