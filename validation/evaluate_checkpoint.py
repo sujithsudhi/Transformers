@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data import IMDBDataset
+from data.imdb import DataPrep
 from models import TransformersModel, TransformersModelConfig
 
 
@@ -82,36 +82,6 @@ def load_checkpoint(path: Path, map_location: torch.device) -> Dict[str, object]
     return torch.load(resolved, map_location=map_location)
 
 
-def build_dataloader(
-    data_cfg: Dict[str, object],
-    split: str,
-    batch_size_override: int | None = None,
-) -> DataLoader:
-    split = {"val": "test", "validation": "test"}.get(split, split)
-    if split not in {"train", "test"}:
-        raise ValueError(f"Unsupported split '{split}', expected 'train' or 'test'.")
-
-    cache_dir = Path(data_cfg.get("cache_dir", "data/cache")).expanduser()
-    dataset_root = Path(data_cfg.get("dataset_root", "data/imdb")).expanduser()
-    dataset = IMDBDataset(
-        split=split,
-        max_tokens=int(data_cfg.get("max_tokens", 256)),
-        cache_dir=cache_dir,
-        dataset_name=str(data_cfg.get("dataset_name", "imdb")),
-        dataset_root=dataset_root,
-        download=True,
-    )
-    batch_size = batch_size_override or int(data_cfg.get("batch_size", 32))
-    num_workers = int(data_cfg.get("num_workers", 0))
-    return DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        drop_last=False,
-    )
-
-
 def build_model(model_cfg: Dict[str, object], dataset: Any) -> TransformersModel:
     config_payload = dict(model_cfg)
     vocab_size = getattr(dataset, "vocab_size", None)
@@ -131,59 +101,71 @@ def build_model(model_cfg: Dict[str, object], dataset: Any) -> TransformersModel
     return TransformersModel(model_config)
 
 
-def evaluate_model(
-    model: TransformersModel,
-    dataloader: DataLoader,
-    device: torch.device,
-) -> Tuple[np.ndarray, np.ndarray]:
+def evaluate_model(model      : TransformersModel,
+                   dataloader : DataLoader,
+                   device     : torch.device,
+                  ) -> Tuple[np.ndarray, np.ndarray]:
     model.eval()
     predictions = []
     targets = []
+    
     with torch.no_grad():
-        for inputs, labels in dataloader:
+        for batch in dataloader:
+
+            if isinstance(batch, dict):
+
+                inputs = batch.get("inputs")
+                labels = batch.get("targets")
+                
+                if inputs is None or labels is None:
+                    raise ValueError("Dataloader must yield inputs and labels/targets keys.")
+            else:
+                inputs, labels = batch
+            
             if isinstance(inputs, dict):
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             elif isinstance(inputs, (tuple, list)):
                 inputs = tuple(v.to(device) for v in inputs)
             else:
                 inputs = inputs.to(device)
+            
             labels = labels.to(device)
-            if isinstance(inputs, dict):
-                logits = model(**inputs).squeeze(-1)
-            elif isinstance(inputs, (tuple, list)):
-                logits = model(*inputs).squeeze(-1)
-            else:
-                logits = model(inputs).squeeze(-1)
+            
+            logits = model(**inputs).squeeze(-1)
+
             probs = torch.sigmoid(logits)
+
             predictions.extend((probs >= 0.5).long().cpu().numpy())
+
             targets.extend(labels.long().cpu().numpy())
+
     return np.array(targets).flatten(), np.array(predictions).flatten()
 
 
-def compute_metrics(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-) -> Tuple[Dict[str, float], np.ndarray, str]:
+def compute_metrics(y_true: np.ndarray,
+                    y_pred: np.ndarray,
+                   ) -> Tuple[Dict[str, float], np.ndarray, str]:
+    
     accuracy = float(accuracy_score(y_true, y_pred))
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        y_true,
-        y_pred,
-        average="binary",
-        zero_division=0.0,
-    )
-    conf_matrix = confusion_matrix(y_true, y_pred)
-    class_report = classification_report(
-        y_true,
-        y_pred,
-        digits=4,
-        zero_division=0.0,
-    )
-    metrics = {
-        "accuracy": accuracy,
-        "precision": float(precision),
-        "recall": float(recall),
-        "f1_score": float(f1),
-    }
+
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true,
+                                                               y_pred,
+                                                               average="binary",
+                                                               zero_division=0.0,
+                                                              )
+    conf_matrix = confusion_matrix(y_true, y_pred, normalize='pred')
+
+    class_report = classification_report(y_true,
+                                         y_pred,
+                                         digits=4,
+                                         zero_division=0.0,
+                                        )
+    metrics = {"accuracy"  : accuracy,
+               "precision" : float(precision),
+               "recall"    : float(recall),
+               "f1_score"  : float(f1),
+              }
+    
     return metrics, conf_matrix, class_report
 
 
@@ -230,7 +212,7 @@ def save_confusion_plot(matrix: np.ndarray, path: Path) -> None:
             ax.text(
                 j,
                 i,
-                format(matrix[i, j], "d"),
+                format(matrix[i, j], "f"),
                 ha="center",
                 va="center",
                 color="white" if matrix[i, j] > thresh else "black",
@@ -255,11 +237,13 @@ def main() -> None:
     data_cfg = config.get("data") or {}
     model_cfg = config.get("model") or {}
 
-    dataloader = build_dataloader(
-        data_cfg,
-        split=args.split.lower(),
-        batch_size_override=args.batch_size,
-    )
+    valData = DataPrep(data_path  = data_cfg.get("data_path"),
+                       batch_size = data_cfg.get("batch_size", 32),
+                       max_tokens = data_cfg.get("max_tokens", 256),      
+                       )
+    
+    dataloader  = valData.prep(split="test")
+    
     dataset = dataloader.dataset
     model = build_model(model_cfg, dataset)
     model.load_state_dict(checkpoint["model_state_dict"])

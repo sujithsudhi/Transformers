@@ -22,6 +22,8 @@ class IMDBDataRead:
                  path=None,
                  url_path= "",
                  trainTestValRation = {"Train" : 70, "Test": 20, "Val": 10}):
+        """
+        """
         
         self.data_split = trainTestValRation
         self.data_path  = Path(path)
@@ -80,8 +82,6 @@ class IMDBDataRead:
 
         return dataset
 
-
-
     def _downloadDataset(self):
         """
         """
@@ -108,7 +108,13 @@ class IMDBDataRead:
 
 class Tokenize(Dataset):
 
-    def __init__(self, texts, labels, tokenizer_name="bert-base-uncased", max_length = 256):
+    def __init__(self, 
+                 texts, 
+                 labels, 
+                 tokenizer_name="bert-base-uncased", 
+                 max_length = 256):
+        """
+        """
         
         self.texts        = texts
         self.labels       = labels 
@@ -123,6 +129,7 @@ class Tokenize(Dataset):
         return len(self.texts)
     
     def __getitem__(self, index):
+        
         text  = self.texts[index]
         label = self.labels[index]
 
@@ -131,7 +138,9 @@ class Tokenize(Dataset):
                                  padding        = "max_length",
                                  max_length     = self.max_length,
                                  return_tensors = "pt")
+        
         target = torch.tensor(label, dtype=torch.float32).unsqueeze(0)
+
         return { "inputs"  : {"inputs"         : encoded["input_ids"].squeeze(0),
                               "attention_mask" : encoded["attention_mask"].squeeze(0)},
                  "targets" : target,
@@ -144,6 +153,8 @@ class DataPrep:
                  num_workers = 8,
                  max_tokens  = 256,
                  url_path    = "" ):
+        """
+        """
         
         self.data_path   = data_path
         self.batch_size  = batch_size
@@ -152,35 +163,40 @@ class DataPrep:
         self.url_path    = url_path
         self.feat_dim    = None
 
-    def prep(self):
+    def prep(self, split = "both"):
         """
         """
         dataloader = IMDBDataRead(path=self.data_path, url_path= self.url_path)
+        
         split      = dataloader.extract_data()
 
-        train_ds   = Tokenize(texts=split["Train"]["text"],
-                              labels=split["Train"]["label"],
-                              tokenizer_name="bert-base-uncased",
-                              max_length=self.max_tokens)
+        train_ds   = Tokenize(texts          = split["Train"]["text"],
+                              labels         = split["Train"]["label"],
+                              tokenizer_name = "bert-base-uncased",
+                              max_length     = self.max_tokens)
         
-        test_ds   = Tokenize(texts=split["Test"]["text"],
-                             labels=split["Test"]["label"],
-                             tokenizer_name="bert-base-uncased",
-                             max_length=self.max_tokens)
+        test_ds   = Tokenize(texts          = split["Test"]["text"],
+                             labels         = split["Test"]["label"],
+                             tokenizer_name = "bert-base-uncased",
+                             max_length     = self.max_tokens)
         
         train_loader = DataLoader(train_ds, 
-                                  batch_size=self.batch_size, 
-                                  shuffle=True,
-                                  num_workers=self.num_workers,
-                                  drop_last=False)
+                                  batch_size  = self.batch_size, 
+                                  shuffle     = True,
+                                  num_workers = self.num_workers,
+                                  drop_last   = False)
 
         test_loader  = DataLoader(test_ds, 
-                                  batch_size=self.batch_size,
-                                  num_workers=self.num_workers,
-                                  drop_last=False)
+                                  batch_size  = self.batch_size,
+                                  num_workers = self.num_workers,
+                                  drop_last   = False)
 
-        return train_loader, test_loader
-
+        if split == "both":
+            return train_loader, test_loader
+        elif split == "train":
+            return train_loader
+        else:
+            return test_loader
 
 if __name__ == "__main__":  
     print("This is main")  
