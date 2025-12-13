@@ -54,29 +54,31 @@ class TransformersModel(nn.Module):
     '''
     def __init__(self, config: TransformersModelConfig) -> None:
         super().__init__()
+
         self.config = config
 
         self.token_embedding: Optional[nn.Embedding] = None
+
         if config.vocab_size is not None:
             
             self.token_embedding = nn.Embedding(config.vocab_size,
                                                 config.embed_dim,
-                                                padding_idx=0,
-                                               )
-            self.input_proj = None
+                                                padding_idx=0)
+            self.input_proj      = None
         else:
             self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
-        self.position   = PositionalEncoding(config.embed_dim,
-                                             dropout = config.dropout,
-                                            )
-        self.encoder = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
-                                                             num_heads         = config.num_heads,
-                                                             mlp_ratio         = config.mlp_ratio,
-                                                             dropout           = config.dropout,
-                                                             attention_dropout = config.attention_dropout,
-                                                            )
-            for _ in range(config.depth)
-        )
+
+        self.position       = PositionalEncoding(config.embed_dim,
+                                                 vocab_size = config.vocab_size
+                                                 dropout   = config.dropout)
+        
+        self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
+                                                                    num_heads         = config.num_heads,
+                                                                    mlp_ratio         = config.mlp_ratio,
+                                                                    dropout           = config.dropout,
+                                                                    attention_dropout = config.attention_dropout)
+                                            for _ in range(config.depth))
+        
         self.norm = nn.LayerNorm(config.embed_dim)
 
         if config.cls_head_dim:

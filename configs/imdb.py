@@ -23,8 +23,8 @@ class IMDBDataConfig(BaseDataConfig):
     data_path    : Path = Path("/media/4TB/Datasets/Basics/IMDB")
     cache_dir    : Path = Path("data/cache/imdb")
     batch_size   : int  = 512
-    max_tokens   : int  = 256
-    num_workers  : int  = 0
+    max_tokens   : int  = 512
+    num_workers  : int  = 8
     dataset_name : str  = "imdb"
     dataset_root : Path = Path("data/imdb")
     url_path     : str  = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
@@ -40,6 +40,7 @@ class IMDBModelConfig(BaseModelConfig):
     mlp_ratio    : float = 2.0
     cls_head_dim : int   = 128
     num_outputs  : int   = 1
+    dropout      : float = 0.1
 
 
 @dataclass(frozen=True)

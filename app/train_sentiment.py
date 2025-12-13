@@ -55,6 +55,7 @@ def main() -> None:
         os.environ["WANDB_DISABLED"] = "true"
     else:
         os.environ.pop("WANDB_DISABLED", None)
+
     wandb_run, wandb_logger = init_wandb_run(app_config)
 
     # Validate configuration contract before applying overrides.
@@ -63,21 +64,24 @@ def main() -> None:
 
     data_cfg = app_config.data
 
-    ImdbData =                  DataPrep(data_path     = data_cfg.data_path,
-                                         batch_size    = data_cfg.batch_size,
-                                         max_tokens    = data_cfg.max_tokens,
-                                         num_workers   = data_cfg.num_workers,
-                                         url_path      = data_cfg.url_path)
+    ImdbData = DataPrep(data_path     = data_cfg.data_path,
+                        batch_size    = data_cfg.batch_size,
+                        max_tokens    = data_cfg.max_tokens,
+                        num_workers   = data_cfg.num_workers,
+                        url_path      = data_cfg.url_path)
     
     train_loader, test_loader = ImdbData.prep()
+
     # Extract feature dimension from dataset to configure projection layer.
-    feature_dim = train_loader.dataset.feature_dim  # type: ignore[attr-defined]
+    feature_dim               = train_loader.dataset.feature_dim  # type: ignore[attr-defined]
 
     model_kwargs              = asdict(app_config.model)
     model_kwargs["input_dim"] = feature_dim
-    vocab_size = getattr(train_loader.dataset, "vocab_size", None)
+    vocab_size                = getattr(train_loader.dataset, "vocab_size", None)
+
     if vocab_size is not None:
         model_kwargs["vocab_size"] = vocab_size
+    
     model_config              = TransformersModelConfig(**model_kwargs)
 
     # Instantiate transformer backbone with resolved configuration.

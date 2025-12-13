@@ -166,19 +166,19 @@ class DataPrep:
     def prep(self, split = "both"):
         """
         """
-        dataloader = IMDBDataRead(path=self.data_path, url_path= self.url_path)
+        dataloader   = IMDBDataRead(path=self.data_path, url_path= self.url_path)
         
-        split      = dataloader.extract_data()
+        datasplit    = dataloader.extract_data()
 
-        train_ds   = Tokenize(texts          = split["Train"]["text"],
-                              labels         = split["Train"]["label"],
-                              tokenizer_name = "bert-base-uncased",
-                              max_length     = self.max_tokens)
+        train_ds     = Tokenize(texts          = datasplit["Train"]["text"],
+                                labels         = datasplit["Train"]["label"],
+                                tokenizer_name = "bert-base-uncased",
+                                max_length     = self.max_tokens)
         
-        test_ds   = Tokenize(texts          = split["Test"]["text"],
-                             labels         = split["Test"]["label"],
-                             tokenizer_name = "bert-base-uncased",
-                             max_length     = self.max_tokens)
+        test_ds      = Tokenize(texts          = datasplit["Test"]["text"],
+                                labels         = datasplit["Test"]["label"],
+                                tokenizer_name = "bert-base-uncased",
+                                max_length     = self.max_tokens)
         
         train_loader = DataLoader(train_ds, 
                                   batch_size  = self.batch_size, 
