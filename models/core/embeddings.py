@@ -51,44 +51,45 @@ class PositionalEncoding(nn.Module):
     ''' Function: __init__
         Description: Initialize sinusoidal positional encoding with dropout.
         Args:
-            embed_dim : Dimensionality of embeddings.
             max_len   : Maximum sequence length supported.
+            embed_dim : Dimensionality of embeddings.
             dropout   : Dropout probability applied after adding positional encoding.
         Returns:
             None
     '''
 
     def __init__(self, 
-                 seq_len,
-                 embed_dim,
-                 dropout):
+                 max_len : int,
+                 embed_dim : int,
+                 dropout : float):
         
         super().__init__()
 
         self.embed_dim      = embed_dim
-        self.seq_len        = seq_len
-        self.dropout        = nn.Dropout(p=dropout)
+        self.max_len        = max_len
+        self.dropout        = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-        position            = torch.arange(0, seq_len).unsqueeze(1)
+        position            = torch.arange(0, self.max_len).unsqueeze(1)
         
         div_term            = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / self.embed_dim))
-        
-        self.pe             = torch.zeros(seq_len, embed_dim)
+        pe                  = torch.zeros(self.max_len, embed_dim)
 
-        self.pe[:, 0::2]    = torch.sin(position * div_term)
-        self.pe[:, 0::1]    = torch.cos(position * div_term)
+        pe[:, 0::2]         = torch.sin(position * div_term)
+        pe[:, 1::2]         = torch.cos(position * div_term)
 
-        self.pe             = self.pe.unsqueeze(0)  # Shape: (1, seq_len, embed_dim)
-        self.register_buffer('pe', self.pe)
+        pe                  = pe.unsqueeze(0)  # Shape: (1, seq_len, embed_dim)
+        self.register_buffer('positional_table', pe, persistent=False)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, offset = 0) -> Tensor:
         """
         Add positional encoding to input embeddings and apply dropout.
 
         :param x: Input tensor of shape (batch_size, seq_len, embed_dim).
         :return: Tensor of same shape as input with positional encoding added.
         """
-        x = x + self.pe[:, :x.size(1), :]
+        length = x.size(1)
+
+        x = x + self.positional_table[:, offset : offset + length]
         return self.dropout(x)
 
         

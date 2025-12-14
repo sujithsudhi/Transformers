@@ -11,7 +11,7 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau
 
@@ -334,7 +334,7 @@ def train_one_epoch(model         : nn.Module,
         for step, raw_batch in enumerate(iterator, start=1):
             batch = _move_to_device(raw_batch, device, config.non_blocking)
             inputs, targets = _split_batch(batch)
-            with autocast(device_type=device.type, enabled=scaler.is_enabled()):
+            with autocast(device_type='cuda', enabled=scaler.is_enabled()):
                 outputs = _forward_model(model, inputs)
                 loss = loss_fn(outputs, targets)
                 loss_to_backward = loss / accum_steps

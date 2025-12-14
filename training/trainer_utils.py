@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Mapping
 
 import torch
 from torch import nn
@@ -242,6 +242,25 @@ def collect_classification_outputs(
     *,
     non_blocking: bool = True,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _move_to_device(obj: Any) -> Any:
+        if isinstance(obj, torch.Tensor):
+            return obj.to(device, non_blocking=non_blocking)
+        if isinstance(obj, Mapping):
+            return {k: _move_to_device(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return type(obj)(_move_to_device(v) for v in obj)
+        return obj
+
+    def _split_batch(batch: Any) -> tuple[Any, Any]:
+        if isinstance(batch, Mapping):
+            if "inputs" in batch and "targets" in batch:
+                return batch["inputs"], batch["targets"]
+            if "x" in batch and "y" in batch:
+                return batch["x"], batch["y"]
+        if isinstance(batch, (list, tuple)) and len(batch) >= 2:
+            return batch[0], batch[1]
+        raise TypeError("Unsupported batch structure; expected (inputs, targets).")
+
     model = model.to(device)
     model.eval()
 
@@ -253,13 +272,18 @@ def collect_classification_outputs(
     softmax = torch.nn.Softmax(dim=-1)
 
     with torch.no_grad():
-        for inputs, targets in dataloader:
-            inputs = inputs.to(device, non_blocking=non_blocking)
-            targets = targets.to(device, non_blocking=non_blocking)
+        for raw_batch in dataloader:
+            batch_inputs, targets = _split_batch(_move_to_device(raw_batch))
+            targets = targets if isinstance(targets, torch.Tensor) else targets
             if targets.ndim > 1 and targets.shape[-1] == 1:
                 targets = targets.view(targets.size(0), -1)
 
-            logits = model(inputs)
+            if isinstance(batch_inputs, Mapping):
+                logits = model(**batch_inputs)
+            elif isinstance(batch_inputs, (list, tuple)):
+                logits = model(*batch_inputs)
+            else:
+                logits = model(batch_inputs)
             if logits.ndim == 2 and logits.shape[1] == 1:
                 probs = sigmoid(logits)
             else:

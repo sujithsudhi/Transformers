@@ -1,14 +1,26 @@
 """Configuration package exposing base and application-specific classes."""
 
-from .base import (AppConfig,
-                   BaseDataConfig,
-                   BaseDatasetConfig,
-                   BaseDataloaderConfig,
-                   BaseLossConfig,
-                   BaseModelConfig,
-                   BaseOptimizerConfig,
-                   BaseTrainingConfig,
+from .base import (
+    AppConfig,
+    BaseDataConfig,
+    BaseDatasetConfig,
+    BaseDataloaderConfig,
+    BaseLossConfig,
+    BaseModelConfig,
+    BaseOptimizerConfig,
+    BaseTrainingConfig,
 )
+
+__all__ = [
+    "AppConfig",
+    "BaseDataConfig",
+    "BaseDatasetConfig",
+    "BaseDataloaderConfig",
+    "BaseLossConfig",
+    "BaseModelConfig",
+    "BaseOptimizerConfig",
+    "BaseTrainingConfig",
+]
 try:
     from .transformers import (
         TransformersConfig,
@@ -26,28 +38,24 @@ except ModuleNotFoundError:
         TransformersOptimizerConfig
     ) = TransformersTrainingConfig = None  # type: ignore
 else:
-    __all__ += [
-        "TransformersConfig",
-        "TransformersDataConfig",
-        "TransformersDataloaderConfig",
-        "TransformersLossConfig",
-        "TransformersModelConfig",
-        "TransformersOptimizerConfig",
-        "TransformersTrainingConfig",
-    ]
+    __all__.extend(
+        [
+            "TransformersConfig",
+            "TransformersDataConfig",
+            "TransformersDataloaderConfig",
+            "TransformersLossConfig",
+            "TransformersModelConfig",
+            "TransformersOptimizerConfig",
+            "TransformersTrainingConfig",
+        ]
+    )
 from .imdb import IMDBConfig, IMDBDataConfig, IMDBModelConfig, IMDBTrainingConfig
 
-__all__ = [
-    "AppConfig",
-    "BaseDataConfig",
-    "BaseDatasetConfig",
-    "BaseDataloaderConfig",
-    "BaseLossConfig",
-    "BaseModelConfig",
-    "BaseOptimizerConfig",
-    "BaseTrainingConfig",
-    "IMDBConfig",
-    "IMDBDataConfig",
-    "IMDBModelConfig",
-    "IMDBTrainingConfig",
-]
+__all__.extend(
+    [
+        "IMDBConfig",
+        "IMDBDataConfig",
+        "IMDBModelConfig",
+        "IMDBTrainingConfig",
+    ]
+)

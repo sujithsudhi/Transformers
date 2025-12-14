@@ -9,38 +9,6 @@ from torch import Tensor, nn
 from .core import PositionalEncoding, TransformerEncoderLayer
 
 
-@dataclass
-class TransformersModelConfig:
-
-    input_dim         : int
-    embed_dim         : int           = 256
-    depth             : int           = 6
-    num_heads         : int           = 8
-    mlp_ratio         : float         = 4.0
-    dropout           : float         = 0.1
-    attention_dropout : float         = 0.1
-    use_cls_token     : bool          = True
-    cls_head_dim      : Optional[int] = None
-    num_outputs       : int           = 1
-    pooling           : str           = "cls"
-    vocab_size        : Optional[int] = None
-
-    ''' Function: __post_init__
-        Description: Validate configuration parameters after initialization.
-        Args:
-            None
-        Returns:
-            None
-    '''
-    def __post_init__(self) -> None:
-        if self.pooling not in {"cls", "mean"}:
-            raise ValueError("pooling must be either 'cls' or 'mean'.")
-        if self.embed_dim % self.num_heads != 0:
-            raise ValueError("embed_dim must be divisible by num_heads.")
-        if self.vocab_size is None and self.input_dim <= 0:
-            raise ValueError("input_dim must be positive.")
-        if self.vocab_size is not None and self.vocab_size <= 0:
-            raise ValueError("vocab_size must be positive when provided.")
 
 
 class TransformersModel(nn.Module):
@@ -52,7 +20,7 @@ class TransformersModel(nn.Module):
         Returns:
             None
     '''
-    def __init__(self, config: TransformersModelConfig) -> None:
+    def __init__(self, config) -> None:
         super().__init__()
 
         self.config = config
@@ -68,8 +36,10 @@ class TransformersModel(nn.Module):
         else:
             self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
 
-        self.position       = PositionalEncoding(embed_dim  = config.embed_dim,
-                                                 vocab_size = config.vocab_size,
+        max_positions       = config.max_length + (1 if config.use_cls_token else 0)
+
+        self.position       = PositionalEncoding(max_len   = max_positions,
+                                                 embed_dim = config.embed_dim,
                                                  dropout    = config.dropout)
         
         self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from data import DataPrep
 
-from models import TransformersModel, TransformersModelConfig
+from models import TransformersModel
 from tool.utils import _to_serializable, load_config_target
 from training import (Trainer,
                       build_loss,
@@ -85,7 +85,8 @@ def main() -> None:
     if vocab_size is not None:
         model_kwargs["vocab_size"] = vocab_size
     
-    model_config              = TransformersModelConfig(**model_kwargs)
+    # Start from the default model config and override with dataset-specific kwargs.
+    model_config              = replace(app_config.model, **model_kwargs)
 
     # Instantiate transformer backbone with resolved configuration.
     model                     = TransformersModel(model_config)

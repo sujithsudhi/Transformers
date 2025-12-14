@@ -41,6 +41,9 @@ class IMDBModelConfig(BaseModelConfig):
     cls_head_dim : int   = 128
     num_outputs  : int   = 1
     dropout      : float = 0.1
+    max_length   : int   = 512
+    input_dim    : int   = 0
+    vocab_size   : int   = 0
 
 
 @dataclass(frozen=True)
