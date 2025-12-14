@@ -44,8 +44,6 @@ class TokenEmbedding(nn.Module):
         """
         return self.embedding(tokens)
         
-   
-
 
 class PositionalEncoding(nn.Module):
     """Sinusoidal positional encoding with optional dropout."""
@@ -61,11 +59,40 @@ class PositionalEncoding(nn.Module):
     '''
 
     def __init__(self, 
-                 vocab_size,
+                 seq_len,
                  embed_dim,
                  dropout):
         
         super().__init__()
+
+        self.embed_dim      = embed_dim
+        self.seq_len        = seq_len
+        self.dropout        = nn.Dropout(p=dropout)
+
+        position            = torch.arange(0, seq_len).unsqueeze(1)
+        
+        div_term            = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / self.embed_dim))
+        
+        self.pe             = torch.zeros(seq_len, embed_dim)
+
+        self.pe[:, 0::2]    = torch.sin(position * div_term)
+        self.pe[:, 0::1]    = torch.cos(position * div_term)
+
+        self.pe             = self.pe.unsqueeze(0)  # Shape: (1, seq_len, embed_dim)
+        self.register_buffer('pe', self.pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Add positional encoding to input embeddings and apply dropout.
+
+        :param x: Input tensor of shape (batch_size, seq_len, embed_dim).
+        :return: Tensor of same shape as input with positional encoding added.
+        """
+        x = x + self.pe[:, :x.size(1), :]
+        return self.dropout(x)
+
+        
+
 
         
 

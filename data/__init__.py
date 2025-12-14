@@ -6,8 +6,9 @@ from .imdb import IMDBDataRead, DataPrep, Tokenize
 
 __all__ = ["IMDBDataset", "build_imdb_dataloaders", "download_imdb_dataset"]
 
+# Scene dataset utilities are optional; import when available.
 try:
-    from data.scene import (
+    from data.neuscene import (
         DatasetMetadata,
         SceneDatasetConfig,
         SceneRecord,

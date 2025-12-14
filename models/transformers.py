@@ -68,9 +68,9 @@ class TransformersModel(nn.Module):
         else:
             self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
 
-        self.position       = PositionalEncoding(config.embed_dim,
-                                                 vocab_size = config.vocab_size
-                                                 dropout   = config.dropout)
+        self.position       = PositionalEncoding(embed_dim  = config.embed_dim,
+                                                 vocab_size = config.vocab_size,
+                                                 dropout    = config.dropout)
         
         self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
                                                                     num_heads         = config.num_heads,

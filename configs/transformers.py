@@ -57,9 +57,7 @@ class TransformersDatasetConfig(SceneDatasetConfig):
 
     dataset_root  : Path             = Path("data/scenes")
     metadata_file : str              = "metadata.json"
-    splits        : Dict[str, float] = field(
-        default_factory=lambda: {"train": 0.8, "val": 0.1, "test": 0.1}
-    )
+    splits        : Dict[str, float] = field(default_factory=lambda: {"train": 0.8, "val": 0.1, "test": 0.1})
     shuffle       : bool             = True
     seed          : int              = 42
 
