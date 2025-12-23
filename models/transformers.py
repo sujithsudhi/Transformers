@@ -23,6 +23,8 @@ class TransformersModel(nn.Module):
     def __init__(self, config) -> None:
         super().__init__()
 
+############################## Here is the actual data preparation for the transformers ###################################
+
         self.config = config
 
         self.token_embedding: Optional[nn.Embedding] = None
@@ -38,9 +40,12 @@ class TransformersModel(nn.Module):
 
         max_positions       = config.max_length + (1 if config.use_cls_token else 0)
 
-        self.position       = PositionalEncoding(max_len   = max_positions,
-                                                 embed_dim = config.embed_dim,
-                                                 dropout    = config.dropout)
+        self.position       = PositionalEncoding(max_len    = max_positions,
+                                                 embed_dim  = config.embed_dim,
+                                                 dropout    = config.dropout,
+                                                 method     = "trainable")
+
+############################## From here we start the actual Tranformer block ###########################################
         
         self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
                                                                     num_heads         = config.num_heads,

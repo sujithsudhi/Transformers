@@ -59,26 +59,34 @@ class PositionalEncoding(nn.Module):
     '''
 
     def __init__(self, 
-                 max_len : int,
+                 max_len   : int,
                  embed_dim : int,
-                 dropout : float):
+                 dropout   : float,
+                 method    : str = "normal" ):
         
         super().__init__()
 
+        self.method         = method
         self.embed_dim      = embed_dim
         self.max_len        = max_len
         self.dropout        = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-        position            = torch.arange(0, self.max_len).unsqueeze(1)
+        if self.method == "trainable":
+            pe                    = torch.zeros(1, self.max_len, self.embed_dim)
+            self.positional_table = nn.Parameter(pe)
+            nn.init.trunc_normal_(self.positional_table, std=0.02) 
+        else:
+            position            = torch.arange(0, self.max_len).unsqueeze(1)
+            
+            div_term            = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / self.embed_dim))
+            pe                  = torch.zeros(self.max_len, embed_dim)
+
+            pe[:, 0::2]         = torch.sin(position * div_term)
+            pe[:, 1::2]         = torch.cos(position * div_term)
+
+            pe                  = pe.unsqueeze(0)  # Shape: (1, seq_len, embed_dim)
+            self.register_buffer('positional_table', pe, persistent=False)
         
-        div_term            = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / self.embed_dim))
-        pe                  = torch.zeros(self.max_len, embed_dim)
-
-        pe[:, 0::2]         = torch.sin(position * div_term)
-        pe[:, 1::2]         = torch.cos(position * div_term)
-
-        pe                  = pe.unsqueeze(0)  # Shape: (1, seq_len, embed_dim)
-        self.register_buffer('positional_table', pe, persistent=False)
 
     def forward(self, x: Tensor, offset = 0) -> Tensor:
         """
@@ -88,8 +96,12 @@ class PositionalEncoding(nn.Module):
         :return: Tensor of same shape as input with positional encoding added.
         """
         length = x.size(1)
+        
+        if offset + length > self.max_len:
+            raise ValueError(f"offset({offset}) + length({length}) > max_len({self.max_len}). Increase max_len.")
 
         x = x + self.positional_table[:, offset : offset + length]
+        
         return self.dropout(x)
 
         
