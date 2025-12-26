@@ -47,11 +47,11 @@ class TransformersModel(nn.Module):
 
 ############################## From here we start the actual Tranformer block ###########################################
         
-        self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
-                                                                    num_heads         = config.num_heads,
-                                                                    mlp_ratio         = config.mlp_ratio,
+        self.encoder        = nn.ModuleList(TransformerEncoderLayer(embedDim          = config.embed_dim,
+                                                                    numHeads          = config.num_heads,
+                                                                    mlpRatio          = config.mlp_ratio,
                                                                     dropout           = config.dropout,
-                                                                    attention_dropout = config.attention_dropout)
+                                                                    attentionDropout = config.attention_dropout)
                                             for _ in range(config.depth))
         
         self.norm = nn.LayerNorm(config.embed_dim)

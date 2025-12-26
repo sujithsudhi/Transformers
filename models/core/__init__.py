@@ -2,19 +2,17 @@
 
 from .embeddings import PositionalEncoding, TokenEmbedding
 from .layers import (
-    MLPBlock,
+    FeedForward,
     MultiHeadSelfAttention,
     ResidualBlock,
-    ScaledDotProductAttention,
     TransformerEncoderLayer,
 )
 
 __all__ = [
     "PositionalEncoding",
     "TokenEmbedding",
-    "MLPBlock",
+    "FeedForward",
     "ResidualBlock",
-    "ScaledDotProductAttention",
     "MultiHeadSelfAttention",
     "TransformerEncoderLayer",
 ]

@@ -101,4 +101,4 @@ class IMDBConfig(AppConfig):
     checkpoint_path : Path                 = Path("results/imdb_transformer.pt")
     wandb_disabled  : bool                 = False
     wandb_project   : str                  = "transformers-imdb"
-    wandb_run_name  : str                  = "trainable-positional-encoding"
+    wandb_run_name  : str                  = "Custom Layers"
