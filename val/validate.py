@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from data import build_imdb_dataloaders  # noqa: E402
-from models import TransformersModel, TransformersModelConfig  # noqa: E402
+from models import ClassifierModel, TransformersModelConfig  # noqa: E402
 from tool.utils import _to_serializable, load_config_target  # noqa: E402
 from training import (  # noqa: E402
     collect_classification_outputs,
@@ -147,7 +147,7 @@ def main() -> None:
         raise AttributeError("Dataset does not expose required 'feature_dim'.")
     model_cfg["input_dim"] = feature_dim
     model_config = TransformersModelConfig(**model_cfg)
-    model = TransformersModel(model_config)
+    model = ClassifierModel(model_config)
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     state_dict = checkpoint.get("model_state_dict")

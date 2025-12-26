@@ -24,7 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from data.imdb import DataPrep
-from models import TransformersModel, TransformersModelConfig
+from models import ClassifierModel, TransformersModelConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,7 +82,7 @@ def load_checkpoint(path: Path, map_location: torch.device) -> Dict[str, object]
     return torch.load(resolved, map_location=map_location)
 
 
-def build_model(model_cfg: Dict[str, object], dataset: Any) -> TransformersModel:
+def build_model(model_cfg: Dict[str, object], dataset: Any) -> ClassifierModel:
     config_payload = dict(model_cfg)
     vocab_size = getattr(dataset, "vocab_size", None)
     feature_dim = getattr(dataset, "feature_dim", None)
@@ -98,10 +98,10 @@ def build_model(model_cfg: Dict[str, object], dataset: Any) -> TransformersModel
                 "Checkpoint does not define input_dim and dataset lacks feature_dim."
             )
     model_config = TransformersModelConfig(**config_payload)
-    return TransformersModel(model_config)
+    return ClassifierModel(model_config)
 
 
-def evaluate_model(model      : TransformersModel,
+def evaluate_model(model      : ClassifierModel,
                    dataloader : DataLoader,
                    device     : torch.device,
                   ) -> Tuple[np.ndarray, np.ndarray]:

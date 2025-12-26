@@ -32,7 +32,7 @@ class IMDBDataConfig(BaseDataConfig):
 
 @dataclass(frozen=True)
 class IMDBModelConfig(BaseModelConfig):
-    """TransformersModel hyperparameters tuned for IMDB classification."""
+    """ClassifierModel hyperparameters tuned for IMDB classification."""
 
     embed_dim    : int   = 128
     depth        : int   = 4
@@ -99,6 +99,6 @@ class IMDBConfig(AppConfig):
     history_path    : Path                 = Path("results/imdb_history.json")
     plot_path       : Path                 = Path("results/imdb_history.png")
     checkpoint_path : Path                 = Path("results/imdb_transformer.pt")
-    wandb_disabled  : bool                 = False
+    wandb_disabled  : bool                 = True
     wandb_project   : str                  = "transformers-imdb"
     wandb_run_name  : str                  = "Custom Layers"

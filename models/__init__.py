@@ -1,7 +1,7 @@
 """Model package exposing transformer architectures."""
 
-from .transformers import TransformersModel
+from .classifier import ClassifierModel
 
 __all__ = [
-    "TransformersModel"
+    "ClassifierModel"
 ]

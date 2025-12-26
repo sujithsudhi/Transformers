@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from models import TransformersModel, TransformersModelConfig  # noqa: E402
+from models import ClassifierModel, TransformersModelConfig  # noqa: E402
 
 
 def _load_config(target: str) -> Any:
@@ -47,7 +47,7 @@ def _resolve_model_config(app_config: Any, input_dim: int | None) -> Transformer
     return TransformersModelConfig(**payload)
 
 
-def _load_checkpoint(model: TransformersModel, checkpoint_path: Path) -> None:
+def _load_checkpoint(model: ClassifierModel, checkpoint_path: Path) -> None:
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     if isinstance(checkpoint, dict):
         state_dict = checkpoint.get("state_dict") or checkpoint.get("model")
@@ -60,7 +60,7 @@ def _load_checkpoint(model: TransformersModel, checkpoint_path: Path) -> None:
 
 
 def _export_to_onnx(
-    model: TransformersModel,
+    model: ClassifierModel,
     output_path: Path,
     dummy_input: torch.Tensor,
     dynamic_axes: bool,
@@ -112,7 +112,7 @@ def _build_dummy_input(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export a TransformersModel to ONNX/TFLite.")
+    parser = argparse.ArgumentParser(description="Export a ClassifierModel to ONNX/TFLite.")
     parser.add_argument("--config",
                         type     = str,
                         required = True,
@@ -169,9 +169,9 @@ def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
 
-    app_config = _load_config(args.config)
+    app_config   = _load_config(args.config)
     model_config = _resolve_model_config(app_config, args.input_dim)
-    model = TransformersModel(model_config).to(device)
+    model        = ClassifierModel(model_config).to(device)
     _load_checkpoint(model, args.checkpoint)
 
     dummy_input = _build_dummy_input(batch_size       = args.batch_size,

@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from data import DataPrep
 
-from models import TransformersModel
+from models import ClassifierModel
 from tool.utils import _to_serializable, load_config_target
 from training import (Trainer,
                       build_loss,
@@ -73,6 +73,8 @@ def main() -> None:
                         num_workers   = data_cfg.num_workers,
                         url_path      = data_cfg.url_path)
     
+    # Preparing the training and test data.
+    # Reading and tokenizing
     train_loader, test_loader = ImdbData.prep()
 
     # Extract feature dimension from dataset to configure projection layer.
@@ -89,7 +91,7 @@ def main() -> None:
     model_config              = replace(app_config.model, **model_kwargs)
 
     # Instantiate transformer backbone with resolved configuration.
-    model                     = TransformersModel(model_config)
+    model                     = ClassifierModel(model_config)
 
     training_cfg              = app_config.training
 
@@ -109,17 +111,17 @@ def main() -> None:
                                                      }
                                                     )
 
-    trainer = Trainer(model        = model,
-                      optimizer    = optimizer,
-                      loss_fn      = loss_fn,
-                      train_loader = train_loader,
-                      config       = training_config,
-                      val_loader   = test_loader,
-                      logger       = wandb_logger,
-                     )
-    history = trainer.fit()
+    trainer      = Trainer(model        = model,
+                           optimizer    = optimizer,
+                           loss_fn      = loss_fn,
+                           train_loader = train_loader,
+                           config       = training_config,
+                           val_loader   = test_loader,
+                           logger       = wandb_logger,
+                          )
+    history      = trainer.fit()
 
-    device = torch.device(training_config.device)
+    device       = torch.device(training_config.device)
     test_metrics = evaluate(trainer.model,
                             test_loader,
                             loss_fn,
@@ -128,8 +130,8 @@ def main() -> None:
                             progress_desc="Test",
                            )
 
-    history_path   = getattr(app_config, "history_path", None)
-    plot_path      = getattr(app_config, "plot_path", None)
+    history_path    = getattr(app_config, "history_path", None)
+    plot_path       = getattr(app_config, "plot_path", None)
     checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/model.pt")))
 
     maybe_save_history(history, history_path)
@@ -140,9 +142,9 @@ def main() -> None:
                                                                device,
                                                                non_blocking=training_config.non_blocking,
                                                               )
-    preds, true_labels = prepare_classification_labels(probabilities, targets)
-    total_examples = max(1, true_labels.numel())
-    accuracy = float((preds == true_labels).sum().item()) / total_examples
+    preds, true_labels       = prepare_classification_labels(probabilities, targets)
+    total_examples           = max(1, true_labels.numel())
+    accuracy                 = float((preds == true_labels).sum().item()) / total_examples
     test_metrics["accuracy"] = accuracy
     test_metrics["examples"] = int(total_examples)
 

@@ -9,9 +9,7 @@ from torch import Tensor, nn
 from .core import PositionalEncoding, TransformerEncoderLayer
 
 
-
-
-class TransformersModel(nn.Module):
+class ClassifierModel(nn.Module):
     """Transformer backbone producing review representations."""
     ''' Function: __init__
         Description: Initialize transformer model with configuration.
@@ -51,11 +49,14 @@ class TransformersModel(nn.Module):
                                                                     numHeads          = config.num_heads,
                                                                     mlpRatio          = config.mlp_ratio,
                                                                     dropout           = config.dropout,
-                                                                    attentionDropout = config.attention_dropout)
+                                                                    attentionDropout  = config.attention_dropout)
                                             for _ in range(config.depth))
+
+############################## Connects the classification head ###########################################
         
         self.norm = nn.LayerNorm(config.embed_dim)
 
+        # Classifier head is attached with the backbone
         if config.cls_head_dim:
             self.head = nn.Sequential(nn.Linear(config.embed_dim, config.cls_head_dim),
                                                 nn.GELU(),
@@ -73,14 +74,14 @@ class TransformersModel(nn.Module):
 
         self.apply(self._init_weights)
 
-    ''' Function: _init_weights
-        Description: Initialise module weights following transformer conventions.
-        Args:
-            module : Neural network module to initialize.
-        Returns:
-            None
-    '''
+
     def _init_weights(self, module: nn.Module) -> None:
+        """
+        Initialise module weights following transformer conventions.
+        
+        :param module: Description
+        :type module: nn.Module
+        """
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std=0.02)
             if module.bias is not None:
@@ -89,19 +90,23 @@ class TransformersModel(nn.Module):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
-    ''' Function: forward_features
-        Description: Produce pooled latent features prior to the classification head.
-        Args:
-            inputs : Input token feature tensor.
-            mask   : Optional attention mask for padding tokens.
-        Returns:
-            Pooled feature representation tensor.
-    '''
+
     def forward_features(self,
                          inputs : Tensor,
                          attention_mask: Optional[Tensor] = None,
                         ) -> Tensor:
-        """Produce pooled latent features prior to the classification head."""
+        """
+        Produce pooled latent features prior to the classification head.
+        
+        :param inputs: Description
+        :type inputs: Tensor
+        :param attention_mask: Description
+        :type attention_mask: Optional[Tensor]
+        :return: Description
+        :rtype: Tensor
+        """
+        
+    
         if self.token_embedding is not None:
             if inputs.dtype != torch.long:
                 inputs = inputs.long()
