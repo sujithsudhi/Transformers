@@ -12,6 +12,7 @@ notebooks/*
 data/*
 !data/__init__.py
 !data/imdb.py
+!data/tinystory.py
 !data/neuscene.py
 !data/.gitkeep
 data/cache/
