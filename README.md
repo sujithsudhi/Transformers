@@ -1,14 +1,15 @@
 # Transformers
 
-Lightweight transformer fine-tuning stack for IMDB sentiment classification, plus
-deployment utilities for exporting the trained model to ONNX/TensorRT/Triton.
+Lightweight transformer fine-tuning stack for IMDB sentiment classification and
+TinyStories decoder language modeling, plus deployment utilities for exporting
+trained models to ONNX/TensorRT/Triton.
 
 ## Project Layout
 
 ```
 Transformers/
-├── configs/             # Base + application configs (IMDB, Transformers scene demos)
-├── data/                # IMDB dataset wrapper, download helpers
+├── configs/             # Base + application configs (IMDB, TinyStories, scene demos)
+├── data/                # Dataset wrappers (IMDB, TinyStories), download helpers
 ├── models/              # Transformer backbone components
 ├── scene_data/          # Scene metadata helpers (legacy research demos)
 ├── scripts/             # Extended training scripts (e.g., generic scene workflow)
@@ -19,7 +20,8 @@ Transformers/
 ├── results/             # Persisted metrics and plots
 ├── requirements.txt     # Python dependencies
 ├── app/
-│   └── train_sentiment.py   # IMDB training entry-point
+│   ├── train_sentiment.py   # IMDB training entry-point
+│   └── trainencoder.py      # TinyStories decoder LM training entry-point
 └── README.md
 ```
 
@@ -51,6 +53,18 @@ JSONL files remain ignored by Git.
 
 Metrics and training curves are written to the paths defined by the active config
 (`history_path`, `plot_path`).
+
+## Training (TinyStories Language Model)
+
+```bash
+python -m app.trainencoder
+```
+
+`app/trainencoder.py` loads `configs.tinystories:TinyStoriesConfig`, streams the
+TinyStories dataset via `data/tinystory.py`, and tokenizes using `GPT2TokenizerFast`.
+Tokenized streams are cached under the configured `cache_dir` to speed up repeated
+runs. Checkpoints, training history, and plots are written to the paths configured in
+`TinyStoriesConfig` (for example `results/tiny_stories_transformer.pt`).
 
 ## Validation
 
