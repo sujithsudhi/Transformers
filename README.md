@@ -57,10 +57,10 @@ Metrics and training curves are written to the paths defined by the active confi
 ## Training (TinyStories Language Model)
 
 ```bash
-python -m app.trainencoder
+python -m app.train_encoder
 ```
 
-`app/trainencoder.py` loads `configs.tinystories:TinyStoriesConfig`, streams the
+`app/train_encoder.py` loads `configs.tinystories:TinyStoriesConfig`, streams the
 TinyStories dataset via `data/tinystory.py`, and tokenizes using `GPT2TokenizerFast`.
 Tokenized streams are cached under the configured `cache_dir` to speed up repeated
 runs. Checkpoints, training history, and plots are written to the paths configured in
