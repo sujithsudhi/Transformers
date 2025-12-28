@@ -79,7 +79,7 @@ class IMDBDataRead:
         data_path  = self._downloadDataset()
 
         dataset = self._load_from_local(path=data_path)
-
+        
         return dataset
 
     def _downloadDataset(self):
@@ -190,6 +190,8 @@ class DataPrep:
                                   batch_size  = self.batch_size,
                                   num_workers = self.num_workers,
                                   drop_last   = False)
+        
+
 
         if split == "both":
             return train_loader, test_loader

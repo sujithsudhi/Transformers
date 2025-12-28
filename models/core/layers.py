@@ -129,6 +129,10 @@ class MultiHeadSelfAttention(nn.Module):
             
             if mask.dim() == 2:
                 mask = mask[:, None, None, :]
+            elif mask.dim() == 3:
+                mask = mask[:, None, :, :]
+            elif mask.dim() == 4:
+                pass
             else:
                 raise ValueError("Unsupported attention mask rank.")
             
@@ -388,6 +392,8 @@ class TransformerDecoderLayer(nn.Module):
         :rtype: Tensor
         """
         batch_size, seq_len, _ = x.shape
+
+        # Shape: [B, L, L]
         causal = torch.tril(torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool))
         causal = causal.unsqueeze(0).expand(batch_size, seq_len, seq_len)
 
@@ -419,13 +425,11 @@ class TransformerDecoderLayer(nn.Module):
         if self.normFirst:
             attn_mask = self._build_causal_mask(x, mask)
             x = self.residue1(x, mask=attn_mask) # Attention is applied inside the residual block
-            x = self.residue2(x)
+            x = self.residue2(x) # Feedforward is applied inside the residual block
         else:
             attn_mask = self._build_causal_mask(x, mask)
             x = self.residue1(x, mask=attn_mask)
             x = self.residue2(x)
         
         return x
-
-
 

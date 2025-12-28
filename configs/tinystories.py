@@ -22,7 +22,7 @@ class TinyStoriesDataConfig(BaseDataConfig):
 
     data_path    : Path = Path("/media/4TB/Datasets/Basics/IMDB")
     cache_dir    : Path = Path("data/cache/imdb")
-    batch_size   : int  = 512
+    batch_size   : int  = 1024
     max_tokens   : int  = 512
     num_workers  : int  = 8
     dataset_name : str  = "tinystories"
