@@ -23,6 +23,9 @@ def build_optimizer(model: nn.Module, lr: float, weight_decay: float) -> torch.o
 def build_loss() -> nn.Module:
     return nn.BCEWithLogitsLoss()
 
+def build_cross_entropy_loss() -> nn.Module:
+    return nn.CrossEntropyLoss()
+
 
 def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"], Optional[Callable[[Dict[str, Any]], None]]]:
     if wandb is None:
@@ -235,13 +238,13 @@ def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training curve plotted to {resolved}")
 
 
-def collect_classification_outputs(
-    model: nn.Module,
-    dataloader,
-    device: torch.device,
-    *,
-    non_blocking: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def collect_classification_outputs(model: nn.Module,
+                                   dataloader,
+                                   device: torch.device,
+                                   *,
+                                   non_blocking: bool = True,
+                                  ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    
     def _move_to_device(obj: Any) -> Any:
         if isinstance(obj, torch.Tensor):
             return obj.to(device, non_blocking=non_blocking)

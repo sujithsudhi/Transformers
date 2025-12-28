@@ -1,5 +1,7 @@
 
 from pathlib import Path
+import os
+import sys
 
 import logging
 
@@ -9,6 +11,11 @@ from datasets import load_dataset
 from torch.utils.data import Dataset, DataLoader
 from typing import Optional
 import torch
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(_REPO_ROOT))
+
+from models.utils import TqdmReader, ProgressFileObject
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -73,9 +80,10 @@ class Tokenizer:
         :param self: Description
         :param split: Description
         """
+        
 
         if cache_path is not None and cache_path.exists():
-            info("Loading cached tokens from {}".format(cache_path))
+            info("Loading cached tokens from {}, it may take sometime..".format(cache_path))
             return torch.load(cache_path)
 
         tokens = []
@@ -159,7 +167,7 @@ class DataPrep:
                  shuffle     : bool = True,
                  num_workers : int = 8,
                  pin_memory  : bool = True,
-                 cache_dir   : Optional[str] = "data/cache",
+                 cache_dir   : Optional[str] = "data/cache/tinystories",
                  use_map     : bool = False,
                  map_num_proc: int = 8,
                  map_batch_size: int = 1000):

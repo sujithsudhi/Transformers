@@ -80,12 +80,11 @@ class MultiHeadSelfAttention(nn.Module):
         return (x.view(batchSize, seqLen, self.numHeads, self.headDim)
                 .transpose(1,2)
                 .contiguous()
-                .view(batchSize * self.numHeads, seqLen, self.headDim)) 
+                .view(batchSize, self.numHeads, seqLen, self.headDim)) 
 
 
     def combineHeads(self,
-                     x         : Tensor, 
-                     batchSize : int):
+                     x     : Tensor):
         """
         Here we combines the self attenstions back
         
@@ -93,7 +92,8 @@ class MultiHeadSelfAttention(nn.Module):
         :param x: Description
         """
 
-        seqLen = x.size(1)
+        batchSize, _,seqLen, _ = x.shape
+
         return (x.view(batchSize, self.numHeads, seqLen, self.headDim)
                 .transpose(1,2)
                 .contiguous()
@@ -113,7 +113,6 @@ class MultiHeadSelfAttention(nn.Module):
         :param Q: Description
         :param K: Description
         """
-        batch_size = x.size(0)
 
         # Passes the linear projection to the split head
         Q = self.splitHeads(self.Wq(x))
@@ -129,16 +128,10 @@ class MultiHeadSelfAttention(nn.Module):
                 mask = mask > 0
             
             if mask.dim() == 2:
-                mask = mask.unsqueeze(1)
-            elif mask.dim() == 3:
-                pass
+                mask = mask[:, None, None, :]
             else:
                 raise ValueError("Unsupported attention mask rank.")
             
-            if mask.size(0) == batch_size:
-                mask = mask.repeat_interleave(self.numHeads, dim=0)
-            elif mask.size(0) != batch_size * self.numHeads:
-                raise ValueError("Attention mask batch dimension mismatch.")
             attn_mask = mask.to(Q.device)
 
         # Calcualating self attention
@@ -148,7 +141,7 @@ class MultiHeadSelfAttention(nn.Module):
                                           mask=attn_mask)
         
         # Combining the heads
-        attention = self.combineHeads(attention, batch_size)
+        attention = self.combineHeads(attention)
         attention = self.dropout(attention)
 
         # Output projection
@@ -156,7 +149,6 @@ class MultiHeadSelfAttention(nn.Module):
 
         return attention
         
-
 class ResidualBlock(nn.Module):
     def __init__(self, 
                  embedDim  : int,
@@ -231,6 +223,9 @@ class FeedForward(nn.Module):
         :param bias: Description
         :type bias: bool
         """
+        if inputDim != outputDim:
+            print(inputDim, outputDim)
+            raise ValueError("Input and output dimension should be the same")
         super().__init__()
 
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
@@ -239,9 +234,6 @@ class FeedForward(nn.Module):
         self.fullyConnected2 = nn.Linear(hiddenDim, outputDim, bias=bias)
 
         self.activation      = activation or nn.GELU()
-
-        # both input and ouptut dimension should be same
-        outputDim            = inputDim or outputDim
 
     def forward(self, x : Tensor):
         """
@@ -333,7 +325,107 @@ class TransformerEncoderLayer(nn.Module):
             x = self.residue2(x)
         
         return x
+    
+class TransformerDecoderLayer(nn.Module):
+    def __init__(self, 
+                 embedDim         : int,
+                 numHeads         : int,
+                 mlpRatio         : int = 4,
+                 activation       : Optional[nn.Module] = None,
+                 attentionDropout : float = 0.0,
+                 dropout          : float = 0.0,
+                 normFirst        : bool  = True,
+                 *args, 
+                 **kwargs):
+        
+        super().__init__(*args, **kwargs)
 
+        self.embedDim   = embedDim
+        self.numHeads   = numHeads
+        self.mlpRatio   = mlpRatio
+        self.activation = activation
+        self.attentionDropout = attentionDropout
+        self.dropout          = dropout
+        self.normFirst        = normFirst
+
+
+        hiddenDim        = int(embedDim * mlpRatio)
+        self.normFirst   = normFirst
+
+        self.attention   = MultiHeadSelfAttention(embedDim = embedDim,
+                                                   numHeads = numHeads,
+                                                   dropout  = attentionDropout)
+        
+        
+
+        self.ff          = FeedForward(inputDim   = embedDim,
+                                       hiddenDim  = hiddenDim,
+                                       outputDim  = embedDim,
+                                       activation = activation or nn.GELU(),
+                                       dropout    = dropout)
+        
+        self.residue1    = ResidualBlock(embedDim  = embedDim,
+                                         dropout   = dropout, 
+                                         module    = self.attention,
+                                         normFirst = normFirst)
+        
+        
+        self.residue2    = ResidualBlock(embedDim  = embedDim,
+                                         dropout   = dropout, 
+                                         module    = self.ff,
+                                         normFirst = normFirst)
+        
+    def _build_causal_mask(self, x: Tensor, mask: Optional[Tensor]) -> Tensor:
+        """
+        Docstring for _build_causal_mask
+        
+        :param self: Description
+        :param x: Description
+        :type x: Tensor
+        :param mask: Description
+        :type mask: Optional[Tensor]
+        :return: Description
+        :rtype: Tensor
+        """
+        batch_size, seq_len, _ = x.shape
+        causal = torch.tril(torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool))
+        causal = causal.unsqueeze(0).expand(batch_size, seq_len, seq_len)
+
+        if mask is None:
+            return causal
+
+        if mask.dtype != torch.bool:
+            mask = mask > 0
+
+        if mask.dim() == 2:
+            # Padding mask: [B, L] -> [B, L, L]
+            pad = mask[:, None, :].expand(batch_size, seq_len, seq_len)
+            return causal & pad
+
+        if mask.dim() == 3:
+            return causal & mask
+
+        raise ValueError("Unsupported attention mask rank.")
+        
+    def forward(self,
+                x    : Tensor, 
+                mask : Optional[Tensor] = None):
+        """
+        Docstring for forward
+        
+        :param self: Description
+        :param x: Description
+        """
+        if self.normFirst:
+            attn_mask = self._build_causal_mask(x, mask)
+            x = self.residue1(x, mask=attn_mask) # Attention is applied inside the residual block
+            x = self.residue2(x)
+        else:
+            attn_mask = self._build_causal_mask(x, mask)
+            x = self.residue1(x, mask=attn_mask)
+            x = self.residue2(x)
+        
+        return x
 
 
 
