@@ -96,9 +96,9 @@ class TinyStoriesConfig(AppConfig):
     dataloader      : TinyStoriesDataloaderConfig = field(default_factory=TinyStoriesDataloaderConfig)
     optimizer       : TinyStoriesOptimizerConfig  = field(default_factory=TinyStoriesOptimizerConfig)
     loss            : TinyStoriesLossConfig       = field(default_factory=TinyStoriesLossConfig)
-    history_path    : Path                 = Path("results/tiny_stories_history.json")
-    plot_path       : Path                 = Path("results/tiny_stories_history.png")
-    checkpoint_path : Path                 = Path("results/tiny_stories_transformer.pt")
-    wandb_disabled  : bool                 = True
-    wandb_project   : str                  = "transformers-tinystories"
-    wandb_run_name  : str                  = "Custom Layers"
+    history_path    : Path                        = Path("results/tiny_stories_history.json")
+    plot_path       : Path                        = Path("results/tiny_stories_history.png")
+    checkpoint_path : Path                        = Path("results/tiny_stories_transformer.pt")
+    wandb_disabled  : bool                        = False
+    wandb_project   : str                         = "transformers-tinystories"
+    wandb_run_name  : str                         = "Custom Layers"

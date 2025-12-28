@@ -6,7 +6,7 @@ from .layers import (
     MultiHeadSelfAttention,
     ResidualBlock,
     TransformerEncoderLayer,
-    TransformerDecoderLayer,
+    TransformerDecoderLayer
 )
 
 __all__ = [
@@ -16,5 +16,5 @@ __all__ = [
     "ResidualBlock",
     "MultiHeadSelfAttention",
     "TransformerEncoderLayer",
-    "TransformerDecoderLayer",
+    "TransformerDecoderLayer"
 ]
