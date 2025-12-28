@@ -42,18 +42,20 @@ class DecoderLanguageModel(nn.Module):
         self.token_embedding = nn.Embedding(config.vocab_size,
                                             config.embed_dim,
                                             padding_idx=0)
-        self.position = PositionalEncoding(max_len=config.max_length,
-                                           embed_dim=config.embed_dim,
-                                           dropout=config.dropout,
-                                           method="trainable")
-        self.decoder = nn.ModuleList(
-            TransformerDecoderLayer(embedDim=config.embed_dim,
-                                    numHeads=config.num_heads,
-                                    mlpRatio=config.mlp_ratio,
-                                    dropout=config.dropout,
-                                    attentionDropout=config.attention_dropout)
-            for _ in range(config.depth)
-        )
+        
+        self.position = PositionalEncoding(max_len   = config.max_length,
+                                           embed_dim = config.embed_dim,
+                                           dropout   = config.dropout,
+                                           method    = "trainable")
+        
+        self.decoder = nn.ModuleList(TransformerDecoderLayer(embedDim        = config.embed_dim,
+                                                             numHeads        = config.num_heads,
+                                                             mlpRatio        = config.mlp_ratio,
+                                                             dropout         = config.dropout,
+                                                             attentionDropout= config.attention_dropout)
+                                    for _ in range(config.depth)
+                                    )
+        
         self.norm = nn.LayerNorm(config.embed_dim)
         self.lm_head = nn.Linear(config.embed_dim, config.vocab_size, bias=False)
 
@@ -85,8 +87,10 @@ class DecoderLanguageModel(nn.Module):
 def main() -> None:
     torch.manual_seed(42)
 
+    # Loading application config
     app_config = load_config_target("configs.tinystories:TinyStoriesConfig")
 
+    # Setting  up wandDB
     wandb_api_key = getattr(app_config, "wandb_api_key", None)
     if wandb_api_key:
         os.environ["WANDB_API_KEY"] = str(wandb_api_key)
@@ -108,19 +112,24 @@ def main() -> None:
     if "/" not in dataset_name:
         dataset_name = "roneneldan/TinyStories"
 
-    data_prep = DataPrep(dataset=dataset_name,
-                         block_size=data_cfg.max_tokens,
-                         batch_size=getattr(dataloader_cfg, "batch_size", 32),
-                         shuffle=True,
-                         num_workers=getattr(dataloader_cfg, "num_workers", 0),
-                         pin_memory=getattr(dataloader_cfg, "pin_memory", True),
-                         cache_dir=str(getattr(data_cfg, "cache_dir", "data/cache")),
+    tokenizer_name = getattr(app_config, "tokenizer_name", "gpt2")
+
+    # Prepering data for training
+    data_prep = DataPrep(dataset         = dataset_name,
+                         block_size      = data_cfg.max_tokens,
+                         batch_size      = getattr(dataloader_cfg, "batch_size", 32),
+                         shuffle         = True,
+                         num_workers     = getattr(dataloader_cfg, "num_workers", 0),
+                         pin_memory      = getattr(dataloader_cfg, "pin_memory", True),
+                         cache_dir       = str(getattr(data_cfg, "cache_dir", "data/cache")),
+                         tokenizer_name  = tokenizer_name,
+                         stride          = getattr(data_cfg, "stride", None),
+                         use_map         = getattr(data_cfg, "use_map", False),
+                         map_num_proc    = getattr(data_cfg, "map_num_proc", 8),
+                         map_batch_size  = getattr(data_cfg, "map_batch_size", 1000),
                         )
 
-    train_loader, val_loader = data_prep.prep()
-
-    tokenizer_name = getattr(app_config, "tokenizer_name", "gpt2")
-    tokenizer = GPT2TokenizerFast.from_pretrained(tokenizer_name)
+    train_loader, val_loader, tokenizer = data_prep.prep()
     vocab_size = tokenizer.vocab_size
 
     model_config = replace(app_config.model,

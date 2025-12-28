@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from .base import (AppConfig,
                    BaseDataConfig,
@@ -28,6 +28,10 @@ class TinyStoriesDataConfig(BaseDataConfig):
     dataset_name : str  = "tinystories"
     dataset_root : Path = Path("data/tinystories")
     url_path     : str  = None
+    stride       : Optional[int] = None
+    use_map      : bool = True
+    map_num_proc : int  = 8
+    map_batch_size: int = 1000
 
 
 @dataclass(frozen=True)
@@ -102,3 +106,4 @@ class TinyStoriesConfig(AppConfig):
     wandb_disabled  : bool                        = False
     wandb_project   : str                         = "transformers-tinystories"
     wandb_run_name  : str                         = "Custom Layers"
+    tokenizer_name : str                          = "gpt2"

@@ -136,10 +136,11 @@ class Tokenizer:
         return tokens
     
 class DataStreamer(Dataset):
-    def __init__(self, tokens, blockSize):
+    def __init__(self, tokens, blockSize, stride: int):
 
         self.tokens    = torch.tensor(tokens, dtype=torch.long)
         self.blockSize = blockSize
+        self.stride    = max(1, stride)
 
         super().__init__()
 
@@ -149,11 +150,15 @@ class DataStreamer(Dataset):
         
         :param self: Description
         """
-        return len(self.tokens) - (self.blockSize + 1)
+        usable = len(self.tokens) - (self.blockSize + 1)
+        if usable < 0:
+            return 0
+        return (usable // self.stride) + 1
 
     def __getitem__(self, index):
 
-        chunk  = self.tokens[index: index + self.blockSize + 1]
+        start = index * self.stride
+        chunk  = self.tokens[start: start + self.blockSize + 1]
         x      = chunk[:-1]
         y      = chunk[1:]
 
@@ -168,6 +173,8 @@ class DataPrep:
                  num_workers : int = 8,
                  pin_memory  : bool = True,
                  cache_dir   : Optional[str] = "data/cache/tinystories",
+                 tokenizer_name: str = "gpt2",
+                 stride      : Optional[int] = None,
                  use_map     : bool = False,
                  map_num_proc: int = 8,
                  map_batch_size: int = 1000):
@@ -179,6 +186,8 @@ class DataPrep:
         self.numWorkers = num_workers
         self.pin_memory = pin_memory
         self.cacheDir   = Path(cache_dir) if cache_dir else None
+        self.tokenizer_name = tokenizer_name
+        self.stride     = block_size if stride is None else max(1, stride)
         self.use_map    = use_map
         self.mapNumProc = map_num_proc
         self.mapBatchSize = map_batch_size
@@ -201,7 +210,8 @@ class DataPrep:
         trainData = ds["train"]
         valData   = ds["validation"]
 
-        tok         = Tokenizer()
+        tok         = Tokenizer(maxTokens=self.blockSize,
+                                tokenizerName=self.tokenizer_name)
         if self.use_map:
             trainTokens = tok.tokenizeSplitMap(trainData,
                                                cache_path=self._cache_path("train", tok.tokenizerName),
@@ -223,10 +233,12 @@ class DataPrep:
 
 
         trainDataset = DataStreamer(tokens     = trainTokens, 
-                                    blockSize  =  self.blockSize)
+                                    blockSize  =  self.blockSize,
+                                    stride     =  self.stride)
         
         valDataset   = DataStreamer(tokens     =  valTokens,
-                                    blockSize  =  self.blockSize)
+                                    blockSize  =  self.blockSize,
+                                    stride     =  self.stride)
         
         trainLoader  = DataLoader(trainDataset,
                                   batch_size  = self.batchSize,
@@ -240,7 +252,7 @@ class DataPrep:
                                   num_workers = self.numWorkers,
                                   pin_memory  = self.pin_memory)
         
-        return trainLoader, valLoader
+        return trainLoader, valLoader, tok
 
 
 

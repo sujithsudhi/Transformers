@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Union
 
@@ -286,6 +287,18 @@ def _count_batch_items(batch: Any) -> int:
     return 0
 
 
+def _count_tokens(batch: Any) -> int:
+    if isinstance(batch, torch.Tensor):
+        return batch.numel()
+    if isinstance(batch, Mapping):
+        for value in batch.values():
+            return _count_tokens(value)
+        return 0
+    if isinstance(batch, (list, tuple)) and batch:
+        return _count_tokens(batch[0])
+    return 0
+
+
 def _try_len(iterable: Iterable[Any]) -> Optional[int]:
     try:
         return len(iterable)  # type: ignore[arg-type]
@@ -327,7 +340,9 @@ def train_one_epoch(model         : nn.Module,
     accum_steps = max(config.gradient_accumulation_steps, 1)
     total_loss = 0.0
     total_examples = 0
+    total_tokens = 0
     total_steps = 0
+    start_time = time.perf_counter()
 
     iterator, progress_bar = _progress_iter(dataloader, progress_desc or "Train")
     try:
@@ -361,9 +376,15 @@ def train_one_epoch(model         : nn.Module,
 
             total_loss += loss.item()
             total_examples += _count_batch_items(raw_batch)
+            total_tokens += _count_tokens(inputs)
             total_steps += 1
             if progress_bar is not None:
-                progress_bar.set_postfix({"loss": f"{loss.item():.4f}"}, refresh=False)
+                elapsed = max(time.perf_counter() - start_time, 1e-8)
+                progress_bar.set_postfix(
+                    {"loss": f"{loss.item():.4f}",
+                     "tok/s": f"{int(total_tokens / elapsed):,}"},
+                    refresh=False,
+                )
     finally:
         if progress_bar is not None:
             progress_bar.close()
@@ -380,11 +401,14 @@ def train_one_epoch(model         : nn.Module,
             optimizer.step()
         optimizer.zero_grad(set_to_none=True)
 
+    elapsed = max(time.perf_counter() - start_time, 1e-8)
     return {
         "loss"     : total_loss / max(total_steps, 1),
         "loss_sum" : total_loss,
         "batches"  : total_steps,
         "examples" : total_examples,
+        "tokens"   : total_tokens,
+        "tok_per_s": total_tokens / elapsed,
     }
 
 
