@@ -33,6 +33,10 @@ _TRAINING_DEFAULTS: Dict[str, Any] = {
     "early_stopping_patience"      : 10,
     "lr_reduction_patience"        : 5,
     "lr_reduction_factor"          : 0.5,
+    "warmup_epochs"                : 0,
+    "warmup_start_factor"          : 0.1,
+    "use_cosine_decay"             : False,
+    "min_lr"                       : 0.0,
 }
 
 
@@ -91,6 +95,11 @@ def _resolve_positive_int(value: Any, default: int) -> int:
     return max(1, candidate)
 
 
+def _resolve_non_negative_int(value: Any, default: int) -> int:
+    candidate = default if value is None else int(value)
+    return max(0, candidate)
+
+
 def _resolve_early_stopping_patience(value: Any) -> int | None:
     if value is None:
         return None
@@ -115,6 +124,11 @@ def _resolve_lr_reduction_factor(value: Any) -> float:
     if factor <= 0 or factor >= 1:
         raise ValueError("lr_reduction_factor must be between 0 and 1 (exclusive).")
     return factor
+
+
+def _resolve_non_negative_float(value: Any, default: float) -> float:
+    candidate = default if value is None else float(value)
+    return max(0.0, candidate)
 
 
 def _resolve_gradient_clip_norm(value: Any) -> float | None:
@@ -176,6 +190,22 @@ def _default_lr_reduction_factor() -> float:
     return _resolve_lr_reduction_factor(_TRAINING_DEFAULTS.get("lr_reduction_factor"))
 
 
+def _default_warmup_epochs() -> int:
+    return _resolve_non_negative_int(_TRAINING_DEFAULTS.get("warmup_epochs"), 0)
+
+
+def _default_warmup_start_factor() -> float:
+    return _resolve_non_negative_float(_TRAINING_DEFAULTS.get("warmup_start_factor"), 0.1)
+
+
+def _default_use_cosine_decay() -> bool:
+    return _resolve_bool(_TRAINING_DEFAULTS.get("use_cosine_decay"), False)
+
+
+def _default_min_lr() -> float:
+    return _resolve_non_negative_float(_TRAINING_DEFAULTS.get("min_lr"), 0.0)
+
+
 @dataclass
 class TrainingConfig:
     epochs                       : int                = field(default_factory=_default_epochs)
@@ -188,6 +218,10 @@ class TrainingConfig:
     early_stopping_patience      : int | None         = field(default_factory=_default_early_stopping_patience)
     lr_reduction_patience        : int | None         = field(default_factory=_default_lr_reduction_patience)
     lr_reduction_factor          : float              = field(default_factory=_default_lr_reduction_factor)
+    warmup_epochs                : int                = field(default_factory=_default_warmup_epochs)
+    warmup_start_factor          : float              = field(default_factory=_default_warmup_start_factor)
+    use_cosine_decay             : bool               = field(default_factory=_default_use_cosine_decay)
+    min_lr                       : float              = field(default_factory=_default_min_lr)
 
     def __post_init__(self) -> None:
         self.epochs = _resolve_positive_int(self.epochs, 5)
@@ -206,6 +240,10 @@ class TrainingConfig:
             self.lr_reduction_patience
         )
         self.lr_reduction_factor = _resolve_lr_reduction_factor(self.lr_reduction_factor)
+        self.warmup_epochs = _resolve_non_negative_int(self.warmup_epochs, 0)
+        self.warmup_start_factor = _resolve_non_negative_float(self.warmup_start_factor, 0.1)
+        self.use_cosine_decay = _resolve_bool(self.use_cosine_decay, False)
+        self.min_lr = _resolve_non_negative_float(self.min_lr, 0.0)
 
 
 def load_training_config(
@@ -236,6 +274,10 @@ def load_training_config(
         "early_stopping_patience",
         "lr_reduction_patience",
         "lr_reduction_factor",
+        "warmup_epochs",
+        "warmup_start_factor",
+        "use_cosine_decay",
+        "min_lr",
     }
     kwargs = {key: payload.get(key) for key in valid_keys}
     return TrainingConfig(**kwargs)

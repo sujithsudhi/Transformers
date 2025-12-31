@@ -50,6 +50,10 @@ class BaseTrainingConfig:
     early_stopping_patience      : int | None   = 10
     lr_reduction_patience        : int | None   = 5
     lr_reduction_factor          : float        = 0.5
+    warmup_epochs                : int          = 0
+    warmup_start_factor          : float        = 0.1
+    use_cosine_decay             : bool         = False
+    min_lr                       : float        = 0.0
 
 
 @dataclass(frozen=True)

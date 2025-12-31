@@ -100,9 +100,11 @@ class MultiHeadSelfAttention(nn.Module):
                 .view(batchSize, seqLen, self.embedDim))
     
 
-    def forward(self, 
-                x    : Tensor, 
-                mask : Optional[Tensor] = None):
+    def forward(self,
+                x        : Tensor,
+                mask     : Optional[Tensor] = None,
+                past_kv  : Optional[tuple[Tensor, Tensor]] = None,
+                use_cache: bool = False):
         """
         This is the main part of the self attention block.
         passes the input to self linear projection, split heads,
@@ -115,11 +117,16 @@ class MultiHeadSelfAttention(nn.Module):
         """
 
         # Passes the linear projection to the split head
-        Q = self.splitHeads(self.Wq(x))
-        K = self.splitHeads(self.Wk(x))
-        V = self.splitHeads(self.Wv(x))
+        Q = self.splitHeads(self.Wq(x)) # [batchSize, numHeads, seqLength, embedDim]
+        K = self.splitHeads(self.Wk(x)) # [batchSize, numHeads, seqLength, embedDim]
+        V = self.splitHeads(self.Wv(x)) # [batchSize, numHeads, seqLength, embedDim]
 
-        # After the splitting Q, K, V size would be [batchSize * numHeads, seqLength, embedDim]
+        if past_kv is not None:
+            past_k, past_v = past_kv
+            K = torch.cat([past_k, K], dim=2)
+            V = torch.cat([past_v, V], dim=2)
+
+        # After the splitting Q, K, V size would be [batchSize, numHeads, seqLength, embedDim]
         
         attn_mask = None
         if mask is not None:
@@ -151,6 +158,8 @@ class MultiHeadSelfAttention(nn.Module):
         # Output projection
         attention = self.Wo(attention)
 
+        if use_cache:
+            return attention, (K, V)
         return attention
         
 class ResidualBlock(nn.Module):
@@ -180,9 +189,9 @@ class ResidualBlock(nn.Module):
         
         self.norm  = nn.LayerNorm(embedDim)
 
-    def forward(self, 
+    def forward(self,
                 x : Tensor,
-                *args, 
+                *args,
                 **kwargs):
         """
         Docstring for forward
@@ -194,12 +203,14 @@ class ResidualBlock(nn.Module):
         :param kwargs: Description
         """
         
-        # Calculating residual
-        if self.normFirst:  
-            residue = x + self.dropout(self.module(self.norm(x),*args, **kwargs))
-        else:
-            residue = self.norm(x + self.dropout(self.module(x, *args, **kwargs)))
+        out = self.module(self.norm(x), *args, **kwargs) if self.normFirst else self.module(x, *args, **kwargs)
+        extra = None
+        if isinstance(out, tuple):
+            out, extra = out
+        residue = x + self.dropout(out) if self.normFirst else self.norm(x + self.dropout(out))
 
+        if extra is not None:
+            return residue, extra
         return residue
 
 class FeedForward(nn.Module):
@@ -379,7 +390,7 @@ class TransformerDecoderLayer(nn.Module):
                                          module    = self.ff,
                                          normFirst = normFirst)
         
-    def _build_causal_mask(self, x: Tensor, mask: Optional[Tensor]) -> Tensor:
+    def _build_causal_mask(self, x: Tensor, mask: Optional[Tensor], past_len: int = 0) -> Tensor:
         """
         Docstring for _build_causal_mask
         
@@ -392,10 +403,12 @@ class TransformerDecoderLayer(nn.Module):
         :rtype: Tensor
         """
         batch_size, seq_len, _ = x.shape
+        total_len = past_len + seq_len
 
-        # Shape: [B, L, L]
-        causal = torch.tril(torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool))
-        causal = causal.unsqueeze(0).expand(batch_size, seq_len, seq_len)
+        causal = torch.tril(torch.ones(total_len, total_len, device=x.device, dtype=torch.bool))
+        if seq_len != total_len:
+            causal = causal[total_len - seq_len: total_len, :]
+        causal = causal.unsqueeze(0).expand(batch_size, seq_len, total_len)
 
         if mask is None:
             return causal
@@ -404,8 +417,9 @@ class TransformerDecoderLayer(nn.Module):
             mask = mask > 0
 
         if mask.dim() == 2:
-            # Padding mask: [B, L] -> [B, L, L]
-            pad = mask[:, None, :].expand(batch_size, seq_len, seq_len)
+            pad = mask[:, None, :].expand(batch_size, seq_len, mask.size(1))
+            if mask.size(1) != total_len:
+                raise ValueError("Padding mask length does not match total sequence length.")
             return causal & pad
 
         if mask.dim() == 3:
@@ -414,22 +428,36 @@ class TransformerDecoderLayer(nn.Module):
         raise ValueError("Unsupported attention mask rank.")
         
     def forward(self,
-                x    : Tensor, 
-                mask : Optional[Tensor] = None):
+                x        : Tensor,
+                mask     : Optional[Tensor] = None,
+                past_kv  : Optional[tuple[Tensor, Tensor]] = None,
+                use_cache: bool = False):
         """
         Docstring for forward
         
         :param self: Description
         :param x: Description
         """
-        if self.normFirst:
-            attn_mask = self._build_causal_mask(x, mask)
-            x = self.residue1(x, mask=attn_mask) # Attention is applied inside the residual block
-            x = self.residue2(x) # Feedforward is applied inside the residual block
-        else:
-            attn_mask = self._build_causal_mask(x, mask)
-            x = self.residue1(x, mask=attn_mask)
-            x = self.residue2(x)
-        
-        return x
+        past_len = 0 if past_kv is None else past_kv[0].size(2)
+        attn_mask = None
+        if not (use_cache and past_kv is not None and x.size(1) == 1):
+            attn_mask = self._build_causal_mask(x, mask, past_len=past_len)
 
+        if self.normFirst:
+            out = self.residue1(x, mask=attn_mask, past_kv=past_kv, use_cache=use_cache)
+            if isinstance(out, tuple):
+                x, present = out
+            else:
+                x, present = out, None
+            x = self.residue2(x)
+        else:
+            out = self.residue1(x, mask=attn_mask, past_kv=past_kv, use_cache=use_cache)
+            if isinstance(out, tuple):
+                x, present = out
+            else:
+                x, present = out, None
+            x = self.residue2(x)
+
+        if use_cache:
+            return x, present
+        return x

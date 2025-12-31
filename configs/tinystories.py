@@ -57,6 +57,10 @@ class TinyStoriesTrainingConfig(BaseTrainingConfig):
     weight_decay            : float      = 0.01
     early_stopping_patience : int | None = 10
     lr_reduction_patience   : int | None = 5
+    warmup_epochs           : int        = 5
+    warmup_start_factor     : float      = 0.1
+    use_cosine_decay        : bool       = True
+    min_lr                  : float      = 1e-5
 
 
 @dataclass(frozen=True)

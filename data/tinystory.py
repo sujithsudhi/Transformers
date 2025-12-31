@@ -94,6 +94,7 @@ class Tokenizer:
         for start in iterator:
             batch = texts[start:start + batch_size]
             encoded = self.tokenizer(batch, add_special_tokens=False)
+            
             for ids in encoded["input_ids"]:
                 tokens.extend(ids)
                 tokens.append(self.eos)
@@ -107,21 +108,21 @@ class Tokenizer:
 
     def tokenizeSplitMap(self,
                          split,
-                         cache_path: Optional[Path] = None,
-                         batch_size: int = 1000,
-                         num_proc: int = 8):
+                         cache_path : Optional[Path] = None,
+                         batch_size : int = 1000,
+                         num_proc   : int = 8):
+        
         if cache_path is not None and cache_path.exists():
             info("Loading cached tokens from {}".format(cache_path))
             return torch.load(cache_path)
 
-        tokenized = split.map(
-            _tokenize_batch_texts,
-            batched=True,
-            batch_size=batch_size,
-            num_proc=num_proc,
-            remove_columns=["text"],
-            fn_kwargs={"tokenizer_name": self.tokenizerName},
-        )
+        tokenized = split.map(_tokenize_batch_texts,
+                              batched        = True,
+                              batch_size     = batch_size,
+                              num_proc       = num_proc,
+                              remove_columns = ["text"],
+                              fn_kwargs      = {"tokenizer_name": self.tokenizerName},
+                             )
 
         tokens = []
         for ids in tokenized["input_ids"]:

@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 import torch
 from torch import Tensor, nn
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from transformers import GPT2TokenizerFast
 
 # Ensure project root is importable when running as a script.
@@ -70,18 +71,33 @@ class DecoderLanguageModel(nn.Module):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
-    def forward(self, inputs: Tensor, attention_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(
+        self,
+        inputs: Tensor,
+        attention_mask: Optional[Tensor] = None,
+        past_kvs: Optional[list[tuple[Tensor, Tensor]]] = None,
+        use_cache: bool = False,
+    ) -> Tensor | tuple[Tensor, list[tuple[Tensor, Tensor]]]:
         if inputs.dtype != torch.long:
             inputs = inputs.long()
 
         x = self.token_embedding(inputs)
         x = self.position(x)
 
-        for layer in self.decoder:
-            x = layer(x, mask=attention_mask)
+        presents: list[tuple[Tensor, Tensor]] = []
+        for idx, layer in enumerate(self.decoder):
+            past_kv = past_kvs[idx] if past_kvs is not None else None
+            if use_cache:
+                x, present = layer(x, mask=attention_mask, past_kv=past_kv, use_cache=True)
+                presents.append(present)
+            else:
+                x = layer(x, mask=attention_mask)
 
         x = self.norm(x)
-        return self.lm_head(x)
+        logits = self.lm_head(x)
+        if use_cache:
+            return logits, presents
+        return logits
 
 
 def main() -> None:
@@ -145,27 +161,62 @@ def main() -> None:
         vocab = logits.size(-1)
         return ce_loss(logits.view(-1, vocab), targets.view(-1))
 
-    training_config = load_training_config({
-        "epochs": training_cfg.epochs,
-        "device": training_cfg.device,
-        "gradient_clip_norm": training_cfg.gradient_clip_norm,
-        "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
-        "use_amp": training_cfg.use_amp,
-        "log_interval": training_cfg.log_interval,
-        "non_blocking": training_cfg.non_blocking,
-        "early_stopping_patience": training_cfg.early_stopping_patience,
-        "lr_reduction_patience": training_cfg.lr_reduction_patience,
-        "lr_reduction_factor": training_cfg.lr_reduction_factor,
-    })
+    training_config = load_training_config({"epochs"                     : training_cfg.epochs,
+                                            "device"                     : training_cfg.device,
+                                            "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
+                                            "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
+                                            "use_amp"                 : training_cfg.use_amp,
+                                            "log_interval"            : training_cfg.log_interval,
+                                            "non_blocking"            : training_cfg.non_blocking,
+                                            "early_stopping_patience" : training_cfg.early_stopping_patience,
+                                            "lr_reduction_patience"   : training_cfg.lr_reduction_patience,
+                                            "lr_reduction_factor"     : training_cfg.lr_reduction_factor,
+                                            "warmup_epochs"           : training_cfg.warmup_epochs,
+                                            "warmup_start_factor"     : training_cfg.warmup_start_factor,
+                                            "use_cosine_decay"        : training_cfg.use_cosine_decay,
+                                            "min_lr"                  : training_cfg.min_lr,
+                                          })
 
-    trainer = Trainer(model=model,
-                      optimizer=optimizer,
-                      loss_fn=loss_fn,
-                      train_loader=train_loader,
-                      config=training_config,
-                      val_loader=val_loader,
-                      logger=wandb_logger,
+    scheduler = None
+    if training_cfg.use_cosine_decay or training_cfg.warmup_epochs > 0:
+        total_epochs = max(1, int(training_cfg.epochs))
+        warmup_epochs = max(0, int(training_cfg.warmup_epochs))
+        warmup_epochs = min(warmup_epochs, max(0, total_epochs - 1))
+        cosine_epochs = max(1, total_epochs - warmup_epochs)
+
+        if warmup_epochs > 0:
+            warmup = LinearLR(
+                optimizer,
+                start_factor=float(training_cfg.warmup_start_factor),
+                total_iters=warmup_epochs,
+            )
+            cosine = CosineAnnealingLR(
+                optimizer,
+                T_max=cosine_epochs,
+                eta_min=float(training_cfg.min_lr),
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                schedulers=[warmup, cosine],
+                milestones=[warmup_epochs],
+            )
+        else:
+            scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=cosine_epochs,
+                eta_min=float(training_cfg.min_lr),
+            )
+
+    trainer = Trainer(model        = model,
+                      optimizer    = optimizer,
+                      loss_fn      = loss_fn,
+                      train_loader = train_loader,
+                      config       = training_config,
+                      val_loader   = val_loader,
+                      scheduler    = scheduler,
+                      logger       = wandb_logger,
                      )
+    
     history = trainer.fit()
 
     test_metrics = evaluate(trainer.model,
@@ -176,8 +227,8 @@ def main() -> None:
                             progress_desc="Validation",
                            )
 
-    history_path = getattr(app_config, "history_path", None)
-    plot_path = getattr(app_config, "plot_path", None)
+    history_path    = getattr(app_config, "history_path", None)
+    plot_path       = getattr(app_config, "plot_path", None)
     checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/tinystories_encoder.pt")))
 
     maybe_save_history(history, history_path)
