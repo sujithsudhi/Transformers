@@ -67,6 +67,7 @@ class Tokenizer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.eos = self.tokenizer.eos_token_id
+        self.vocab_size = self.tokenizer.vocab_size
 
         info("Vocabulary size : {}".format(self.tokenizer.vocab_size))
     

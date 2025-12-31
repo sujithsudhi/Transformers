@@ -207,6 +207,10 @@ def main() -> None:
                 eta_min=float(training_cfg.min_lr),
             )
 
+    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/tinystories_encoder.pt")))
+    checkpoint_path = checkpoint_path.expanduser().resolve()
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
     trainer = Trainer(model        = model,
                       optimizer    = optimizer,
                       loss_fn      = loss_fn,
@@ -215,6 +219,7 @@ def main() -> None:
                       val_loader   = val_loader,
                       scheduler    = scheduler,
                       logger       = wandb_logger,
+                      best_checkpoint_dir = checkpoint_path.parent,
                      )
     
     history = trainer.fit()
@@ -229,13 +234,10 @@ def main() -> None:
 
     history_path    = getattr(app_config, "history_path", None)
     plot_path       = getattr(app_config, "plot_path", None)
-    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/tinystories_encoder.pt")))
 
     maybe_save_history(history, history_path)
     maybe_plot_history(history, plot_path)
 
-    checkpoint_path = checkpoint_path.expanduser().resolve()
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     best_state = trainer.best_model_state_dict()
     torch.save(
         {

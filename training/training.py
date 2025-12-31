@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Union
@@ -341,6 +342,33 @@ def _count_tokens(batch: Any) -> int:
     return 0
 
 
+def _metric_value(metrics: Optional[Dict[str, float]], key: str) -> Optional[float]:
+    if metrics is None:
+        return None
+    value = metrics.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_checkpoint_metric(value: Optional[float]) -> str:
+    if value is None:
+        return "nan"
+    numeric = float(value)
+    if math.isnan(numeric):
+        return "nan"
+    return f"{numeric:.4f}"
+
+
+def _best_checkpoint_filename(epoch: int, train_loss: Optional[float], val_loss: Optional[float]) -> str:
+    train_tag = _format_checkpoint_metric(train_loss)
+    val_tag = _format_checkpoint_metric(val_loss)
+    return f"epoch-{epoch:03d}_train-{train_tag}_val-{val_tag}.pt"
+
+
 def _try_len(iterable: Iterable[Any]) -> Optional[int]:
     try:
         return len(iterable)  # type: ignore[arg-type]
@@ -530,6 +558,7 @@ class Trainer:
                  val_loader   : Optional[Iterable[Any]] = None,
                  scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
                  logger       : Optional[Callable[[Dict[str, Any]], None]] = None,
+                 best_checkpoint_dir: Optional[Path | str] = None,
                 ) -> None:
         self.model        = model.to(torch.device(config.device))
         self.optimizer    = optimizer
@@ -544,6 +573,11 @@ class Trainer:
         self.best_state_dict: Optional[Dict[str, torch.Tensor]] = None
         self.best_val_loss: float = float("inf")
         self.best_epoch: Optional[int] = None
+        self.best_checkpoint_dir: Optional[Path] = None
+        if best_checkpoint_dir is not None:
+            resolved = Path(best_checkpoint_dir).expanduser().resolve()
+            resolved.mkdir(parents=True, exist_ok=True)
+            self.best_checkpoint_dir = resolved
 
     ''' Function: fit
         Description: Train model for configured number of epochs with validation.
@@ -590,7 +624,7 @@ class Trainer:
             should_stop_after_epoch = False
             lr_reduced = False
             record_best = False
-            if (monitor_early_stop or monitor_lr_reduction) and val_metrics is not None:
+            if val_metrics is not None:
                 current_loss = val_metrics.get("loss")
                 if current_loss is not None:
                     val_loss = float(current_loss)
@@ -604,13 +638,27 @@ class Trainer:
                         self.best_epoch = epoch
                         record_best = True
                     else:
-                        stagnant_epochs += 1
-                        stagnant_lr_epochs += 1
-                        if monitor_lr_reduction and lr_patience is not None and stagnant_lr_epochs >= lr_patience:
-                            lr_reduced = self._reduce_learning_rate(lr_factor)
-                            stagnant_lr_epochs = 0
+                        if monitor_early_stop:
+                            stagnant_epochs += 1
+                        if monitor_lr_reduction:
+                            stagnant_lr_epochs += 1
+                            if lr_patience is not None and stagnant_lr_epochs >= lr_patience:
+                                lr_reduced = self._reduce_learning_rate(lr_factor)
+                                stagnant_lr_epochs = 0
                         if monitor_early_stop and patience is not None and stagnant_epochs >= patience:
                             should_stop_after_epoch = True
+
+            if record_best and self.best_checkpoint_dir is not None:
+                train_loss = _metric_value(train_metrics, "loss")
+                val_loss = _metric_value(val_metrics, "loss")
+                filename = _best_checkpoint_filename(epoch, train_loss, val_loss)
+                payload = {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "model_state_dict": self.best_state_dict,
+                }
+                torch.save(payload, self.best_checkpoint_dir / filename)
 
             self._step_scheduler(val_metrics)
             record = {
@@ -689,6 +737,7 @@ def fit(model        : nn.Module,
         val_loader   : Optional[Iterable[Any]] = None,
         scheduler    : Optional[Union[_LRScheduler, ReduceLROnPlateau]] = None,
         logger       : Optional[Callable[[Dict[str, Any]], None]] = None,
+        best_checkpoint_dir: Optional[Path | str] = None,
        ) -> list[Dict[str, Any]]:
     trainer = Trainer(model        = model,
                       optimizer    = optimizer,
@@ -698,5 +747,6 @@ def fit(model        : nn.Module,
                       val_loader   = val_loader,
                       scheduler    = scheduler,
                       logger       = logger,
+                      best_checkpoint_dir = best_checkpoint_dir,
                      )
     return trainer.fit()
