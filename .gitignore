@@ -22,3 +22,4 @@ data/processed/
 results/*
 !results/.gitkeep
 wandb/
+inference/cpp/build

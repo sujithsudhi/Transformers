@@ -1,7 +1,3 @@
-#include <stdexcept>
-#include <string>
-#include <vector>
-#include <eigen3/Eigen/Dense>
 #include "utils.hpp"
 #include "activations.hpp"
 #include <cmath>

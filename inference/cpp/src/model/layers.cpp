@@ -1,7 +1,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 #include "utils.hpp"
 #include "layers.hpp"
 #include <cmath>
@@ -15,7 +15,7 @@ namespace layers
                 const int32_t _outputDim,
                 const float_t* wPtr,
                 const float_t* bPtr,
-                const std::string _name = "")
+                const std::string _name)
 
           : inputDim(std::move(_inputDim)),
             outputDim(std::move(_outputDim)),

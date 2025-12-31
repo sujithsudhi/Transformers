@@ -1,17 +1,20 @@
+#pragma once
+
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <eigen3/Eigen/Dense>
+#include <Eigen/Dense>
 #include "utils.hpp"
 #include <cmath>
 
 
 namespace layers
 {
+
     // Here we define the Linear layer (Dense layer without activation)
 class Linear
 {
-    
+public:
     Linear(const int32_t _inputDim,
             const int32_t _outputDim,
             const float_t* wPtr,
@@ -33,7 +36,7 @@ class Linear
 
 class LayerNorm
 {
-    
+public:
     LayerNorm(const float* g_ptr,
               const float* b_ptr,
               int d,
@@ -51,10 +54,22 @@ private:
 
 };
 
+template<typename LayerType>
 class Residual
 {
-    Residual()
-}
+public:
+    explicit Residual(LayerType& layer_) : layer(layer_) {}
+
+    void forward(const Vector& input, Vector& output)
+    {
+        Vector tmp(input.size());
+        layer.forward(input, tmp);
+        output = input + tmp;
+    }
+
+private:
+    LayerType& layer;
+};
 
 
 } // namespace layer

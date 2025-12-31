@@ -1,5 +1,9 @@
+#pragma once
+
 #include <stdexcept>
-#include <eigen3/Eigen/Dense>
+#include <string>
+#include <vector>
+#include <Eigen/Dense>
 
 using MatrixRM = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 using Vector   = Eigen::VectorXf;
