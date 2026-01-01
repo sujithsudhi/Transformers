@@ -5,6 +5,7 @@
 #include <vector>
 #include <Eigen/Dense>
 #include "utils.hpp"
+#include "model.hpp"
 #include <cmath>
 
 

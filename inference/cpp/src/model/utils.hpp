@@ -9,7 +9,6 @@ using MatrixRM = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::Row
 using Vector   = Eigen::VectorXf;
 using RowVec   = Eigen::RowVectorXf;
 
-
 struct Tensor
 {
     std::vector<float> data;

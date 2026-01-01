@@ -72,3 +72,13 @@ target_link_libraries(tinystories_app
                       PRIVATE
                       nlohmann_json::nlohmann_json
                       cnpy)
+
+target_include_directories(tinystories_infer
+    PRIVATE
+        ${cnpy_SOURCE_DIR}
+)
+
+target_include_directories(tinystories_app
+    PRIVATE
+        ${cnpy_SOURCE_DIR}
+)
