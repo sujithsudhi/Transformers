@@ -26,11 +26,15 @@ int main(int argc, char** argv)
     
     if(display_params)
     {
-        const auto& config = modelParams.metadata;
+        const auto& model_config = modelParams.metadata.at("config").at("model");
 
-        std::cout << config.at("config").at("model") << std::endl;
+        for (const auto& kv : model_config.items())
+        {
+            std::cout << kv.key() << " : " << kv.value() << std::endl;
 
-        const auto& weights = modelParams.weights;
+        }
+
+        const auto& weights = modelParams.model_weights.named;
 
         for (const auto& kv : weights) 
         {

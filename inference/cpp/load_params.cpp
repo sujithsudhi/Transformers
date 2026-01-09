@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <cmath>
-#include <limits>
+#include <cctype>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include "model.hpp"
 #include <nlohmann/json.hpp>
 #include <cnpy.h>
@@ -15,10 +17,69 @@ namespace infer {
 
 namespace {
 
+bool has_prefix(const std::string& value, const std::string& prefix)
+{
+    return value.rfind(prefix, 0) == 0;
+}
+
+bool is_digits(const std::string& value)
+{
+    return !value.empty() &&
+           std::all_of(value.begin(), value.end(),
+                       [](unsigned char c) { return std::isdigit(c) != 0; });
+}
+
+std::vector<size_t> collect_encoder_indices(const cnpy::npz_t& weights)
+{
+    std::set<size_t> indices;
+
+    for (const auto& kv : weights) 
+    {
+        const std::string& key = kv.first;
+        if (!has_prefix(key, "encoder.")) 
+        {
+            continue;
+        }
+        const size_t start = std::string("encoder.").size();
+        const size_t dot = key.find('.', start);
+
+        if (dot == std::string::npos) 
+        {
+            continue;
+        }
+        const std::string idx_str = key.substr(start, dot - start);
+
+        if (!is_digits(idx_str)) 
+        {
+            continue;
+        }
+        indices.insert(static_cast<size_t>(std::stoull(idx_str)));
+    }
+    return std::vector<size_t>(indices.begin(), indices.end());
+}
+
+bool check_required_keys(const cnpy::npz_t& weights,
+                         const std::vector<std::string>& keys,
+                         const std::string& context)
+{
+    bool ok = true;
+    for (const auto& key : keys) 
+    {
+        if (weights.find(key) == weights.end()) 
+        {
+            std::cerr << "Warning: missing key for " << context << ": " << key << "\n";
+            ok = false;
+        }
+    }
+    return ok;
+}
+
 const cnpy::NpyArray& require_array(const cnpy::npz_t& weights, const std::string& name)
 {
     auto it = weights.find(name);
-    if (it == weights.end()) {
+
+    if (it == weights.end()) 
+    {
         throw std::runtime_error("Missing array in NPZ: " + name);
     }
     return it->second;
@@ -98,7 +159,6 @@ AttentionWeights load_attention(const cnpy::npz_t& weights,
                                 const std::string& prefix,
                                 int embed_dim)
 {
-    std::cout << "Reading attention weights" << std::endl;
 
     return AttentionWeights{map_matrix(require_array(weights, prefix + ".Wq.weight"),
                                     embed_dim, embed_dim, prefix + ".Wq.weight"),
@@ -124,7 +184,6 @@ FeedForwardWeights load_ff(const cnpy::npz_t& weights,
                            int embed_dim,
                            int ff_dim)
 {
-    std::cout << "Reading feed forward weights" << std::endl;
 
     return FeedForwardWeights{
         map_matrix(require_array(weights, prefix + ".fullyConnected1.weight"),
@@ -206,13 +265,16 @@ ModelWeights load_model_weights(const cnpy::npz_t& weights, const Json& metadata
     ModelWeights model;
     model.named = weights;
     model.encoder.clear();
+    model.head_weights.clear();
+    model.head_biases.clear();
 
-    const auto& model_cfg = metadata.at("config").at("model");
-    const int embed_dim = model_cfg.value("embed_dim", 0);
+    const auto& model_cfg  = metadata.at("config").at("model");
+    const int embed_dim    = model_cfg.value("embed_dim", 0);
     const double mlp_ratio = model_cfg.value("mlp_ratio", 0.0);
-    const int max_length = model_cfg.value("max_length", 0);
-    const int vocab_size = model_cfg.value("vocab_size", 0);
-    const int ff_dim = (embed_dim > 0 && mlp_ratio > 0.0)
+    const int max_length   = model_cfg.value("max_length", 0);
+    const int vocab_size   = model_cfg.value("vocab_size", 0);
+
+    const int ff_dim       = (embed_dim > 0 && mlp_ratio > 0.0)
         ? static_cast<int>(std::lround(embed_dim * mlp_ratio))
         : 0;
 
@@ -221,70 +283,255 @@ ModelWeights load_model_weights(const cnpy::npz_t& weights, const Json& metadata
     std::cout << "Model ff_dim: " << ff_dim << std::endl;
 
     std::cout << "Reading model weights.." << std::endl;
-    const size_t max_layers = depth > 0 ? static_cast<size_t>(depth)
-                                        : std::numeric_limits<size_t>::max();
-    for (size_t i = 0; i < max_layers; ++i) 
-    {
-        const std::string layer_prefix = "encoder." + std::to_string(i);
-
-        if (weights.find(layer_prefix + ".attention.Wq.weight") == weights.end()) 
-        {
-            if (depth > 0) {
-                throw std::runtime_error(
-                    "Missing encoder layer weights for " + layer_prefix);
-            }
-            break;
-        }
-
-        std::cout << "Loading encoder layer " << i << std::endl;
-        const auto attention = load_attention(weights, layer_prefix + ".attention",
-                                              embed_dim);
-        const auto ff = load_ff(weights, layer_prefix + ".ff", embed_dim, ff_dim);
-        model.encoder.push_back(EncoderLayerWeights{attention,
-                                                    ff,
-                                                    load_residual_attention(attention, weights,
-                                                                            layer_prefix + ".residue1", embed_dim),
-                                                    load_residual_ff(ff, weights,
-                                                                    layer_prefix + ".residue2", embed_dim, ff_dim)
-                                                                                        });
-    }
 
     auto set_optional_matrix = [&](std::unique_ptr<Eigen::Map<const MatrixRM>>& target,
                                    const std::string& key,
                                    int expected_rows,
-                                   int expected_cols) {
+                                   int expected_cols) 
+    {
         auto it = weights.find(key);
-        if (it != weights.end()) {
-            target = std::make_unique<Eigen::Map<const MatrixRM>>(
-                map_matrix(it->second, expected_rows, expected_cols, key));
+
+        if (it != weights.end()) 
+        {
+            target = std::make_unique<Eigen::Map<const MatrixRM>>(map_matrix(it->second, 
+                                                                  expected_rows, 
+                                                                  expected_cols, 
+                                                                  key));
+        } 
+        else 
+        {
+            std::cerr << "Warning: missing key in NPZ: " << key << "\n";
         }
     };
 
     auto set_optional_vector = [&](std::unique_ptr<Eigen::Map<const Vector>>& target,
                                    const std::string& key,
-                                   int expected_size) {
+                                   int expected_size) 
+    {
         auto it = weights.find(key);
-        if (it != weights.end()) {
-            target = std::make_unique<Eigen::Map<const Vector>>(
-                map_vector(it->second, expected_size, key));
+
+        if (it != weights.end()) 
+        {
+            target = std::make_unique<Eigen::Map<const Vector>>(map_vector(it->second, 
+                                                                expected_size, 
+                                                                key));
+        } 
+        else 
+        {
+            std::cerr << "Warning: missing key in NPZ: " << key << "\n";
         }
     };
 
-    const int expected_vocab = vocab_size > 0 ? vocab_size : 0;
+    const int expected_vocab     = vocab_size > 0 ? vocab_size : 0;
     const int expected_positions = max_length > 0 ? max_length + 1 : 0;
 
     set_optional_matrix(model.cls_token, "cls_token",
                         embed_dim > 0 ? 1 : 0, embed_dim);
+
     set_optional_matrix(model.token_embedding_weight, "token_embedding.weight",
                         expected_vocab, embed_dim);
+
     set_optional_matrix(model.position_positional_table, "position.positional_table",
                         expected_positions, embed_dim);
+
     set_optional_vector(model.norm_weight, "norm.weight", embed_dim);
     set_optional_vector(model.norm_bias, "norm.bias", embed_dim);
-    set_optional_matrix(model.head0_weight, "head.0.weight", embed_dim, embed_dim);
-    set_optional_vector(model.head0_bias, "head.0.bias", embed_dim);
-    set_optional_matrix(model.head3_weight, "head.3.weight", 1, embed_dim);
-    set_optional_vector(model.head3_bias, "head.3.bias", 1);
+
+    const std::vector<size_t> found_layers = collect_encoder_indices(weights);
+
+    if (depth > 0 && found_layers.size() != static_cast<size_t>(depth)) 
+    {
+        std::cerr << "Warning: depth=" << depth
+                  << " but found " << found_layers.size()
+                  << " encoder blocks in NPZ\n";
+    }
+
+    if (depth > 0) 
+    {
+        for (size_t i = 0; i < static_cast<size_t>(depth); ++i) 
+        {
+            const std::string layer_prefix = "encoder." + std::to_string(i);
+            const std::vector<std::string> required = {layer_prefix + ".attention.Wq.weight",
+                                                       layer_prefix + ".attention.Wq.bias",
+                                                       layer_prefix + ".attention.Wk.weight",
+                                                       layer_prefix + ".attention.Wk.bias",
+                                                       layer_prefix + ".attention.Wv.weight",
+                                                       layer_prefix + ".attention.Wv.bias",
+                                                       layer_prefix + ".attention.Wo.weight",
+                                                       layer_prefix + ".attention.Wo.bias",
+                                                       layer_prefix + ".ff.fullyConnected1.weight",
+                                                       layer_prefix + ".ff.fullyConnected1.bias",
+                                                       layer_prefix + ".ff.fullyConnected2.weight",
+                                                       layer_prefix + ".ff.fullyConnected2.bias",
+                                                       layer_prefix + ".residue1.norm.weight",
+                                                       layer_prefix + ".residue1.norm.bias",
+                                                       layer_prefix + ".residue2.norm.weight",
+                                                       layer_prefix + ".residue2.norm.bias",
+                                                      };
+
+            if (!check_required_keys(weights, required, layer_prefix)) 
+            {
+                std::cerr << "Warning: skipping encoder layer " << i
+                          << " due to missing keys\n";
+                continue;
+            }
+
+            std::cout << "Loading encoder layer " << i << std::endl;
+
+            const auto attention = load_attention(weights, 
+                                                  layer_prefix + ".attention",
+                                                  embed_dim);
+
+            const auto ff = load_ff(weights, 
+                                    layer_prefix + ".ff", 
+                                    embed_dim, 
+                                    ff_dim);
+
+            model.encoder.push_back(EncoderLayerWeights{attention,
+                                                        ff,
+                                                        load_residual_attention(attention, 
+                                                                                weights,
+                                                                                layer_prefix + ".residue1", 
+                                                                                embed_dim),
+                                                        load_residual_ff(ff, 
+                                                                        weights,
+                                                                        layer_prefix + ".residue2", 
+                                                                        embed_dim, 
+                                                                        ff_dim)
+                                                        });
+        }
+    } 
+    else 
+    {
+        for (size_t i : found_layers) 
+        {
+            const std::string layer_prefix = "encoder." + std::to_string(i);
+
+            const std::vector<std::string> required = {layer_prefix + ".attention.Wq.weight",
+                                                       layer_prefix + ".attention.Wq.bias",
+                                                       layer_prefix + ".attention.Wk.weight",
+                                                       layer_prefix + ".attention.Wk.bias",
+                                                       layer_prefix + ".attention.Wv.weight",
+                                                       layer_prefix + ".attention.Wv.bias",
+                                                       layer_prefix + ".attention.Wo.weight",
+                                                       layer_prefix + ".attention.Wo.bias",
+                                                       layer_prefix + ".ff.fullyConnected1.weight",
+                                                       layer_prefix + ".ff.fullyConnected1.bias",
+                                                       layer_prefix + ".ff.fullyConnected2.weight",
+                                                       layer_prefix + ".ff.fullyConnected2.bias",
+                                                       layer_prefix + ".residue1.norm.weight",
+                                                       layer_prefix + ".residue1.norm.bias",
+                                                       layer_prefix + ".residue2.norm.weight",
+                                                       layer_prefix + ".residue2.norm.bias",
+                                                      };
+            
+            if (!check_required_keys(weights, required, layer_prefix)) 
+            {
+                std::cerr << "Warning: skipping encoder layer " << i
+                          << " due to missing keys\n";
+                continue;
+            }
+
+            std::cout << "Loading encoder layer " << i << std::endl;
+
+            const auto attention = load_attention(weights, 
+                                                  layer_prefix + ".attention",
+                                                  embed_dim);
+
+            const auto ff = load_ff(weights, 
+                                    layer_prefix + ".ff", 
+                                    embed_dim, 
+                                    ff_dim);
+
+            model.encoder.push_back(EncoderLayerWeights{attention,
+                                                        ff,
+                                                        load_residual_attention(attention, 
+                                                                                weights,
+                                                                                layer_prefix + ".residue1", 
+                                                                                embed_dim),
+                                                        load_residual_ff(ff, 
+                                                                        weights,
+                                                                        layer_prefix + ".residue2", 
+                                                                        embed_dim, 
+                                                                        ff_dim)
+                                                        });
+        }
+    }
+
+    const std::unordered_set<std::string> non_head_keys = {"cls_token",
+                                                           "token_embedding.weight",
+                                                           "position.positional_table",
+                                                           "norm.weight",
+                                                           "norm.bias"
+                                                          };
+
+    for (const auto& kv : weights) 
+    {
+        const std::string& key = kv.first;
+
+        if (has_prefix(key, "encoder.") || non_head_keys.count(key) != 0) 
+        {
+            continue;
+        }
+
+        if (key == "head.0.weight") 
+        {
+            model.head0_weight = std::make_unique<Eigen::Map<const MatrixRM>>(map_matrix(kv.second, embed_dim, embed_dim, key));
+        } 
+        else if (key == "head.0.bias") 
+        {
+            model.head0_bias = std::make_unique<Eigen::Map<const Vector>>(map_vector(kv.second, embed_dim, key));
+        } 
+        else if (key == "head.3.weight") 
+        {
+            model.head3_weight = std::make_unique<Eigen::Map<const MatrixRM>>(
+                map_matrix(kv.second, 1, embed_dim, key));
+        }
+        else if (key == "head.3.bias") 
+        {
+            model.head3_bias = std::make_unique<Eigen::Map<const Vector>>(map_vector(kv.second, 1, key));
+        }
+
+        if (key.size() >= 7 && key.rfind(".weight") == key.size() - 7) 
+        {
+            if (kv.second.shape.size() == 2 || (kv.second.shape.size() > 2 && kv.second.shape[0] == 1)) 
+            {
+                model.head_weights[key] = std::make_unique<Eigen::Map<const MatrixRM>>(map_matrix(kv.second, 0, 0, key));
+            } 
+            else 
+            {
+                std::cerr << "Warning: expected 2D weight for " << key << "\n";
+            }
+        } 
+        else if (key.size() >= 5 && key.rfind(".bias") == key.size() - 5) 
+        {
+            if (kv.second.shape.size() == 1) 
+            {
+                model.head_biases[key] = std::make_unique<Eigen::Map<const Vector>>(map_vector(kv.second, 0, key));
+            } 
+            else 
+            {
+                std::cerr << "Warning: expected 1D bias for " << key << "\n";
+            }
+        }
+    }
+
+    if (!model.head0_weight)
+    {
+        std::cerr << "Warning: missing key in NPZ: head.0.weight\n";
+    }
+    if (!model.head0_bias) 
+    {
+        std::cerr << "Warning: missing key in NPZ: head.0.bias\n";
+    }
+    if (!model.head3_weight) 
+    {
+        std::cerr << "Warning: missing key in NPZ: head.3.weight\n";
+    }
+    if (!model.head3_bias) 
+    {
+        std::cerr << "Warning: missing key in NPZ: head.3.bias\n";
+    }
 
     return model;
 }
@@ -316,9 +563,9 @@ LoadedParams load_params(const std::string& json_path, const std::string& npz_pa
 {
     LoadedParams params;
     params.metadata      = load_json(json_path);
-    params.weights       = load_npz(npz_path);
+    cnpy::npz_t weights  = load_npz(npz_path);
 
-    params.model_weights = load_model_weights(params.weights, params.metadata);
+    params.model_weights = load_model_weights(weights, params.metadata);
     params.vocab         = load_vocab(vocab_path);
 
     return params;

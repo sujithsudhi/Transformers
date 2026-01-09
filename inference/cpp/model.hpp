@@ -72,12 +72,14 @@ struct ModelWeights
 
     std::unique_ptr<Eigen::Map<const MatrixRM>> head3_weight;
     std::unique_ptr<Eigen::Map<const Vector>> head3_bias;
+
+    std::unordered_map<std::string, std::unique_ptr<Eigen::Map<const MatrixRM>>> head_weights;
+    std::unordered_map<std::string, std::unique_ptr<Eigen::Map<const Vector>>> head_biases;
 };
 
 struct LoadedParams 
 {
     Json metadata;
-    cnpy::npz_t weights;
     ModelWeights model_weights;
     std::unordered_map<std::string, int> vocab;
 };
@@ -93,8 +95,10 @@ cnpy::npz_t load_npz(const std::string& path);
 // Loading model config
 Json load_json(const std::string& path);
 
+// Loading model weights
 ModelWeights load_model_weights(const cnpy::npz_t& weights, const Json& metadata);
 
+// Loading model vocabulary
 std::unordered_map<std::string, int> load_vocab(const std::string& path);
 
 std::vector<std::string> find_keys_with_prefix(const ModelWeights& weights,
