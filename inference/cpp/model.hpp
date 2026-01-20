@@ -9,6 +9,10 @@
 #include <vector>
 #include "src/model/utils.hpp"
 
+#ifdef USE_TOKENIZERS
+#include <tokenizers_cpp.h>
+#endif
+
 namespace infer {
 
 using Json = nlohmann::json;
@@ -77,11 +81,26 @@ struct ModelWeights
     std::unordered_map<std::string, std::unique_ptr<Eigen::Map<const Vector>>> head_biases;
 };
 
-struct LoadedParams 
+struct LoadedParams
 {
     Json metadata;
     ModelWeights model_weights;
     std::unordered_map<std::string, int> vocab;
+
+#ifdef USE_TOKENIZERS
+    std::unique_ptr<tokenizers::Tokenizer> tokenizer;  // tokenizers-cpp API
+#endif
+
+    LoadedParams() = default;
+
+    LoadedParams(const LoadedParams&) = delete;
+    LoadedParams& operator = (const LoadedParams&) = delete;
+
+    LoadedParams(LoadedParams&&) noexcept = default;
+    LoadedParams& operator = (LoadedParams&&) noexcept = default;
+
+    ~LoadedParams() = default;
+
 };
 
 // Loading the model parameters
@@ -100,6 +119,11 @@ ModelWeights load_model_weights(const cnpy::npz_t& weights, const Json& metadata
 
 // Loading model vocabulary
 std::unordered_map<std::string, int> load_vocab(const std::string& path);
+
+#ifdef USE_TOKENIZERS
+// Load HuggingFace tokenizer from JSON file
+std::unique_ptr<tokenizers::Tokenizer> load_hf_tokenizer(const std::string& path);
+#endif
 
 std::vector<std::string> find_keys_with_prefix(const ModelWeights& weights,
                                                const std::string& prefix);

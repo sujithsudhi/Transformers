@@ -20,15 +20,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from data.tinystory import DataPrep
 from models.core import PositionalEncoding, TransformerDecoderLayer
 from tool.utils import _to_serializable, load_config_target
-from training import (
-    Trainer,
-    build_optimizer,
-    evaluate,
-    init_wandb_run,
-    load_training_config,
-    maybe_plot_history,
-    maybe_save_history,
-)
+
+from training import (Trainer,
+                      build_optimizer,
+                      evaluate,
+                      init_wandb_run,
+                      load_training_config,
+                      maybe_plot_history,
+                      maybe_save_history,
+                     )
 from training.trainer_utils import build_cross_entropy_loss
 
 
@@ -53,7 +53,8 @@ class DecoderLanguageModel(nn.Module):
                                                              numHeads        = config.num_heads,
                                                              mlpRatio        = config.mlp_ratio,
                                                              dropout         = config.dropout,
-                                                             attentionDropout= config.attention_dropout)
+                                                             attentionDropout= config.attention_dropout,
+                                                             flash_attention = config.use_flash_attn)
                                     for _ in range(config.depth)
                                     )
         

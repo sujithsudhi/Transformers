@@ -1,0 +1,6 @@
+[submodule "inference/cpp/inference/cpp/external/tokenizers"]
+	path = inference/cpp/inference/cpp/external/tokenizers
+	url = https://github.com/huggingface/tokenizers.git
+[submodule "inference/cpp/external/tokenizers-cpp"]
+	path = inference/cpp/external/tokenizers-cpp
+	url = https://github.com/mlc-ai/tokenizers-cpp.git

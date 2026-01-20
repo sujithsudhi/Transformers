@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include "model.hpp"
+#include "src/model/executer.hpp"
 
 int main(int argc, char** argv) 
 {
@@ -22,7 +23,7 @@ int main(int argc, char** argv)
 
     modelParams = infer::load_params("inference/exports/imdb_checkpoint.json",
                                      "inference/exports/imdb_checkpoint.npz",
-                                     "inference/exports/bert_tokenizer/vocab.txt");
+                                     "inference/exports/bert_tokenizer/tokenizer.json");
     
     if(display_params)
     {
@@ -62,6 +63,10 @@ int main(int argc, char** argv)
         std::cout << modelParams.vocab["[PAD]"] << std::endl;
     }
 
-    std::cout << "tinystories_app: placeholder main (wiring pending)" << std::endl;
+    execute::Executer exec(modelParams);
+    exec.run();
+
+
+
     return 0;
 }

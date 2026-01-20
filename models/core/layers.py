@@ -2,13 +2,15 @@ import math
 import torch
 from torch import Tensor, nn
 from typing import Optional
+import torch.nn.functional as F
 
 
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self,
                  embedDim : int,
                  numHeads : int,
-                 dropout  : float = 0.0):
+                 dropout  : float = 0.0,
+                 flash_attention : bool = False):
         """
         Docstring for __init__
         
@@ -29,7 +31,10 @@ class MultiHeadSelfAttention(nn.Module):
         self.embedDim  = embedDim
         self.headDim  = self.embedDim // self.numHeads
 
+        self.dropout_p = dropout
         self.dropout   = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
+        self.flash_attention = flash_attention
+        self._flash_warned = False
 
         self.Wq = nn.Linear(self.embedDim, self.embedDim, bias=True)
         self.Wk = nn.Linear(self.embedDim, self.embedDim, bias=True)
@@ -47,6 +52,21 @@ class MultiHeadSelfAttention(nn.Module):
         :param v: Description
         :param mask: Description
         """
+
+        if self.flash_attention:
+            if not self._flash_warned and not torch.cuda.is_available():
+                print("Warning: flash_attention=True but CUDA is unavailable; using SDP math kernel.")
+                self._flash_warned = True
+            attn_mask = None
+            if mask is not None:
+                mask = mask.to(dtype=torch.bool, device=q.device)
+                attn_mask = ~mask
+            dropout_p = self.dropout_p if self.training else 0.0
+
+            return F.scaled_dot_product_attention(q, k, v,
+                                                  attn_mask=attn_mask,
+                                                  dropout_p=dropout_p,
+                                                  is_causal=False)
 
         dk = q.size()[-1]
         attention =  torch.matmul(q, k.transpose(-2,-1))
@@ -239,7 +259,6 @@ class FeedForward(nn.Module):
         :type bias: bool
         """
         if inputDim != outputDim:
-            print(inputDim, outputDim)
             raise ValueError("Input and output dimension should be the same")
         super().__init__()
 
@@ -273,7 +292,8 @@ class TransformerEncoderLayer(nn.Module):
                  activation       : Optional[nn.Module] = None,
                  attentionDropout : float = 0.0,
                  dropout          : float = 0.0,
-                 normFirst        : bool  = True):
+                 normFirst        : bool  = True,
+                 flash_attention  : bool  = False):
         """
         Docstring for __init__
         
@@ -301,7 +321,8 @@ class TransformerEncoderLayer(nn.Module):
 
         self.attention   = MultiHeadSelfAttention(embedDim = embedDim,
                                                   numHeads = numHeads,
-                                                  dropout  = attentionDropout)
+                                                  dropout  = attentionDropout,
+                                                  flash_attention = flash_attention)
         
         self.residue1    = ResidualBlock(embedDim  = embedDim,
                                          dropout   = dropout, 
@@ -350,6 +371,7 @@ class TransformerDecoderLayer(nn.Module):
                  attentionDropout : float = 0.0,
                  dropout          : float = 0.0,
                  normFirst        : bool  = True,
+                 flash_attention  : bool  = False,
                  *args, 
                  **kwargs):
         
@@ -362,14 +384,17 @@ class TransformerDecoderLayer(nn.Module):
         self.attentionDropout = attentionDropout
         self.dropout          = dropout
         self.normFirst        = normFirst
+        self.flash_attn       = flash_attention
 
 
         hiddenDim        = int(embedDim * mlpRatio)
         self.normFirst   = normFirst
 
+
         self.attention   = MultiHeadSelfAttention(embedDim = embedDim,
                                                    numHeads = numHeads,
-                                                   dropout  = attentionDropout)
+                                                   dropout  = attentionDropout,
+                                                   flash_attention = self.flash_attn )
         
         
 
@@ -443,20 +468,13 @@ class TransformerDecoderLayer(nn.Module):
         if not (use_cache and past_kv is not None and x.size(1) == 1):
             attn_mask = self._build_causal_mask(x, mask, past_len=past_len)
 
-        if self.normFirst:
-            out = self.residue1(x, mask=attn_mask, past_kv=past_kv, use_cache=use_cache)
-            if isinstance(out, tuple):
-                x, present = out
-            else:
-                x, present = out, None
-            x = self.residue2(x)
+        out = self.residue1(x, mask=attn_mask, past_kv=past_kv, use_cache=use_cache)
+        if isinstance(out, tuple):
+            x, present = out
         else:
-            out = self.residue1(x, mask=attn_mask, past_kv=past_kv, use_cache=use_cache)
-            if isinstance(out, tuple):
-                x, present = out
-            else:
-                x, present = out, None
-            x = self.residue2(x)
+            x = out
+            present = None
+        x = self.residue2(x)
 
         if use_cache:
             return x, present

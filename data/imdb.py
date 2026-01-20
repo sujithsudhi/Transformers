@@ -119,6 +119,7 @@ class Tokenize(Dataset):
         self.texts        = texts
         self.labels       = labels 
         self.tokenizer    = AutoTokenizer.from_pretrained(tokenizer_name)
+        
         self.max_length   = max_length
 
         # Expose metadata expected by the trainer/model wiring.

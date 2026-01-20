@@ -13,6 +13,10 @@
 #include <unordered_map>
 #include "src/model/utils.hpp"
 
+#ifdef USE_TOKENIZERS
+#include <tokenizers_cpp.h>
+#endif
+
 namespace infer {
 
 namespace {
@@ -246,24 +250,75 @@ cnpy::npz_t load_npz(const std::string& path)
     return cnpy::npz_load(path);
 }
 
-std::unordered_map<std::string, int> load_vocab(const std::string& path) 
+std::unordered_map<std::string, int> load_vocab(const std::string& path)
 {
-    std::unordered_map<std::string, int> vocab;
-    std::ifstream in(path);
-    std::string token;
-    int idx = 0;
-    while (std::getline(in, token)) 
-    {
-        vocab[token] = idx++;
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open vocab file: " + path);
     }
+
+    Json vocab_json;
+    file >> vocab_json;
+
+    std::unordered_map<std::string, int> vocab;
+
+    // Try to parse BERT/WordPiece tokenizer format
+    if (vocab_json.contains("model") && vocab_json["model"].contains("vocab")) {
+        const auto& vocab_obj = vocab_json["model"]["vocab"];
+        for (const auto& [token, id] : vocab_obj.items()) {
+            vocab[token] = id.get<int>();
+        }
+    }
+    // Try simple {"token": id} format
+    else if (vocab_json.is_object()) {
+        for (const auto& [token, id] : vocab_json.items()) {
+            if (id.is_number_integer()) {
+                vocab[token] = id.get<int>();
+            }
+        }
+    }
+    else {
+        throw std::runtime_error("Unsupported vocab format in: " + path);
+    }
+
     return vocab;
 }
+
+#ifdef USE_TOKENIZERS
+std::unique_ptr<tokenizers::Tokenizer> load_hf_tokenizer(const std::string& path)
+{
+    try
+    {
+        // Read tokenizer.json file into memory
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            throw std::runtime_error("Cannot open file: " + path);
+        }
+
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::string blob(size, '\0');
+        if (!file.read(&blob[0], size)) {
+            throw std::runtime_error("Failed to read file: " + path);
+        }
+
+        // Use tokenizers-cpp API: FromBlobJSON
+        return tokenizers::Tokenizer::FromBlobJSON(blob);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error("Failed to load tokenizer from " + path + ": " + e.what());
+    }
+}
+#endif
 
 // Loading the model weights and mapping to Eigen matrices
 ModelWeights load_model_weights(const cnpy::npz_t& weights, const Json& metadata)
 {
     ModelWeights model;
     model.named = weights;
+
     model.encoder.clear();
     model.head_weights.clear();
     model.head_biases.clear();
@@ -335,6 +390,7 @@ ModelWeights load_model_weights(const cnpy::npz_t& weights, const Json& metadata
                         expected_positions, embed_dim);
 
     set_optional_vector(model.norm_weight, "norm.weight", embed_dim);
+
     set_optional_vector(model.norm_bias, "norm.bias", embed_dim);
 
     const std::vector<size_t> found_layers = collect_encoder_indices(weights);
@@ -559,7 +615,7 @@ const cnpy::NpyArray* find_array(const ModelWeights& weights,
     return &it->second;
 }
 
-LoadedParams load_params(const std::string& json_path, const std::string& npz_path, const std::string& vocab_path) 
+LoadedParams load_params(const std::string& json_path, const std::string& npz_path, const std::string& vocab_path)
 {
     LoadedParams params;
     params.metadata      = load_json(json_path);
@@ -567,6 +623,20 @@ LoadedParams load_params(const std::string& json_path, const std::string& npz_pa
 
     params.model_weights = load_model_weights(weights, params.metadata);
     params.vocab         = load_vocab(vocab_path);
+
+#ifdef USE_TOKENIZERS
+    // Load full tokenizer if available
+    try
+    {
+        params.tokenizer = load_hf_tokenizer(vocab_path);
+        std::cout << "Loaded HuggingFace tokenizer from: " << vocab_path << std::endl;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Warning: Could not load HF tokenizer: " << e.what() << std::endl;
+        std::cerr << "Falling back to vocab-only tokenization" << std::endl;
+    }
+#endif
 
     return params;
 }

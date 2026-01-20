@@ -38,14 +38,15 @@ class TinyStoriesDataConfig(BaseDataConfig):
 class TinyStoriesModelConfig(BaseModelConfig):
     """ClassifierModel hyperparameters tuned for IMDB classification."""
 
-    embed_dim    : int   = 512
-    depth        : int   = 4
-    num_heads    : int   = 8
-    mlp_ratio    : float = 2.0
-    dropout      : float = 0.1
-    max_length   : int   = 512
-    input_dim    : int   = 0
-    vocab_size   : int   = 0
+    embed_dim      : int   = 512
+    depth          : int   = 4
+    num_heads      : int   = 8
+    mlp_ratio      : float = 2.0
+    dropout        : float = 0.1
+    max_length     : int   = 512
+    input_dim      : int   = 0
+    vocab_size     : int   = 0
+    use_flash_attn : bool  = True
 
 
 @dataclass(frozen=True)
@@ -109,5 +110,5 @@ class TinyStoriesConfig(AppConfig):
     checkpoint_path : Path                        = Path("results/tiny_stories_transformer.pt")
     wandb_disabled  : bool                        = False
     wandb_project   : str                         = "transformers-tinystories"
-    wandb_run_name  : str                         = "Custom Layers"
+    wandb_run_name  : str                         = "Flash Attention"
     tokenizer_name : str                          = "gpt2"

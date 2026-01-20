@@ -59,7 +59,7 @@ template<typename LayerType>
 class Residual
 {
 public:
-    explicit Residual(LayerType& layer_) : layer(layer_) {}
+    explicit Residual(LayerType& _layer) : layer(_layer) {}
 
     void forward(const Vector& input, Vector& output)
     {
@@ -72,5 +72,7 @@ private:
     LayerType& layer;
 };
 
+// Tokenizer class removed - tokenization is handled in executer.cpp
 
-} // namespace layer
+
+} // namespace layers
