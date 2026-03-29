@@ -24,3 +24,5 @@ results/*
 !results/.gitkeep
 wandb/
 inference/cpp/build
+
+wandb/
