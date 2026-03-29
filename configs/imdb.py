@@ -10,10 +10,10 @@ from .base import (AppConfig,
                    BaseDataConfig,
                    BaseDataloaderConfig,
                    BaseLossConfig,
-                   BaseModelConfig,
                    BaseOptimizerConfig,
                    BaseTrainingConfig,
                   )
+from .transformers import TransformersModelConfig
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class IMDBDataConfig(BaseDataConfig):
 
 
 @dataclass(frozen=True)
-class IMDBModelConfig(BaseModelConfig):
+class IMDBModelConfig(TransformersModelConfig):
     """ClassifierModel hyperparameters tuned for IMDB classification."""
 
     embed_dim    : int   = 128
