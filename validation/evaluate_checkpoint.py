@@ -23,8 +23,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from configs import TransformersModelConfig
 from data.imdb import DataPrep
-from models import ClassifierModel, TransformersModelConfig
+from models import ClassifierModel
 
 
 def parse_args() -> argparse.Namespace:
@@ -86,16 +87,15 @@ def build_model(model_cfg: Dict[str, object], dataset: Any) -> ClassifierModel:
     config_payload = dict(model_cfg)
     vocab_size = getattr(dataset, "vocab_size", None)
     feature_dim = getattr(dataset, "feature_dim", None)
-    if "vocab_size" not in config_payload and vocab_size is not None:
+    stored_vocab_size = config_payload.get("vocab_size")
+    if (stored_vocab_size is None or int(stored_vocab_size) <= 0) and vocab_size is not None:
         config_payload["vocab_size"] = int(vocab_size)
-    if "input_dim" not in config_payload:
-        if vocab_size is not None:
-            config_payload["input_dim"] = int(vocab_size)
-        elif feature_dim is not None:
+    if config_payload.get("vocab_size") in (None, 0):
+        if feature_dim is not None:
             config_payload["input_dim"] = int(feature_dim)
         else:
             raise ValueError(
-                "Checkpoint does not define input_dim and dataset lacks feature_dim."
+                "Checkpoint does not define a usable vocab_size/input_dim and dataset lacks feature_dim."
             )
     model_config = TransformersModelConfig(**config_payload)
     return ClassifierModel(model_config)
@@ -237,12 +237,15 @@ def main() -> None:
     data_cfg = config.get("data") or {}
     model_cfg = config.get("model") or {}
 
-    valData = DataPrep(data_path  = data_cfg.get("data_path"),
-                       batch_size = data_cfg.get("batch_size", 32),
-                       max_tokens = data_cfg.get("max_tokens", 256),      
-                       )
+    valData = DataPrep(data_path  = data_cfg.get("data_path") or data_cfg.get("dataset_root"),
+                       batch_size = args.batch_size or data_cfg.get("batch_size", 32),
+                       max_tokens = data_cfg.get("max_tokens", 256),
+                       num_workers = data_cfg.get("num_workers", 0),
+                       url_path = data_cfg.get("url_path", ""),
+                      )
     
-    dataloader  = valData.prep(split="test")
+    split = "train" if args.split == "train" else "test"
+    dataloader  = valData.prep(split=split)
     
     dataset = dataloader.dataset
     model = build_model(model_cfg, dataset)
