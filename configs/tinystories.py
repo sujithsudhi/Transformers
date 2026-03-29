@@ -10,10 +10,10 @@ from .base import (AppConfig,
                    BaseDataConfig,
                    BaseDataloaderConfig,
                    BaseLossConfig,
-                   BaseModelConfig,
                    BaseOptimizerConfig,
                    BaseTrainingConfig,
                   )
+from .transformers import TransformersModelConfig
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ class TinyStoriesDataConfig(BaseDataConfig):
 
 
 @dataclass(frozen=True)
-class TinyStoriesModelConfig(BaseModelConfig):
+class TinyStoriesModelConfig(TransformersModelConfig):
     """ClassifierModel hyperparameters tuned for IMDB classification."""
 
     embed_dim      : int   = 512

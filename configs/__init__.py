@@ -50,6 +50,12 @@ else:
         ]
     )
 from .imdb import IMDBConfig, IMDBDataConfig, IMDBModelConfig, IMDBTrainingConfig
+from .tinystories import (
+    TinyStoriesConfig,
+    TinyStoriesDataConfig,
+    TinyStoriesModelConfig,
+    TinyStoriesTrainingConfig,
+)
 
 __all__.extend(
     [
@@ -57,5 +63,9 @@ __all__.extend(
         "IMDBDataConfig",
         "IMDBModelConfig",
         "IMDBTrainingConfig",
+        "TinyStoriesConfig",
+        "TinyStoriesDataConfig",
+        "TinyStoriesModelConfig",
+        "TinyStoriesTrainingConfig",
     ]
 )
