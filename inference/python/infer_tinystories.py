@@ -12,11 +12,11 @@ from torch import Tensor
 from transformers import GPT2TokenizerFast
 
 # Ensure repository root is importable when executing as a script.
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.train_encoder import DecoderLanguageModel  # noqa: E402
+from app.train_decoder import DecoderLanguageModel  # noqa: E402
 from data.tinystory import DataPrep, DataStreamer  # noqa: E402
 from tool.utils import _to_serializable, load_config_target  # noqa: E402
 from training import evaluate, load_training_config  # noqa: E402
