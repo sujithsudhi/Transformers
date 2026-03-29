@@ -34,6 +34,20 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
+This repository now depends on the sibling `transformer-core` package in
+editable mode. The expected local layout is:
+
+```text
+Repos/
+  Transformers/
+  transformer-core/
+```
+
+If you are setting the project up on a new machine, clone the
+`transformer-core` repo beside this one before running the install commands
+above. The extraction workflow and ongoing shared-core development notes are documented in
+[docs/transformer-core-migration.md](/c:/Users/Sujith/Dev/Repos/Transformers/docs/transformer-core-migration.md).
+
 Install extra packages if you plan to export/run ONNX or TensorRT models:
 
 ```bash

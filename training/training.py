@@ -601,7 +601,6 @@ class Trainer:
         stagnant_lr_epochs = 0
 
         for epoch in range(1, self.config.epochs + 1):
-            iterator, _ = _progress_iter(self.train_loader, f"Epoch {epoch}")
             train_metrics = train_one_epoch(self.model,
                                             self.train_loader,
                                             self.optimizer,

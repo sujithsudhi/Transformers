@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from data.tinystory import DataPrep
-from models.core import PositionalEncoding, TransformerDecoderLayer
+from transformer_core import PositionalEncoding, TransformerDecoderLayer
 from tool.utils import _to_serializable, load_config_target
 
 from training import (Trainer,

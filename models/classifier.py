@@ -6,7 +6,7 @@ from typing import Optional
 import torch
 from torch import Tensor, nn
 
-from .core import PositionalEncoding, TransformerEncoderLayer
+from transformer_core import PositionalEncoding, TransformerEncoderLayer
 
 
 class ClassifierModel(nn.Module):
