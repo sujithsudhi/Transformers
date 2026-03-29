@@ -14,8 +14,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from configs import TransformersModelConfig  # noqa: E402
 from data import build_imdb_dataloaders  # noqa: E402
-from models import ClassifierModel, TransformersModelConfig  # noqa: E402
+from models import ClassifierModel  # noqa: E402
 from tool.utils import _to_serializable, load_config_target  # noqa: E402
 from training import (  # noqa: E402
     collect_classification_outputs,
@@ -142,10 +143,14 @@ def main() -> None:
         download=getattr(data_cfg, "download", True),
     )
 
+    vocab_size = getattr(dataloader.dataset, "vocab_size", None)
     feature_dim = getattr(dataloader.dataset, "feature_dim", None)
-    if feature_dim is None:
-        raise AttributeError("Dataset does not expose required 'feature_dim'.")
-    model_cfg["input_dim"] = feature_dim
+    if vocab_size is not None and int(vocab_size) > 0:
+        model_cfg["vocab_size"] = int(vocab_size)
+    elif feature_dim is not None:
+        model_cfg["input_dim"] = int(feature_dim)
+    else:
+        raise AttributeError("Dataset must expose either 'vocab_size' or 'feature_dim'.")
     model_config = TransformersModelConfig(**model_cfg)
     model = ClassifierModel(model_config)
 

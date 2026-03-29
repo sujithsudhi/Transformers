@@ -5,17 +5,19 @@ from __future__ import annotations
 import argparse
 import sys
 import tempfile
+from dataclasses import asdict, is_dataclass
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import torch
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from models import ClassifierModel, TransformersModelConfig  # noqa: E402
+from configs import TransformersModelConfig  # noqa: E402
+from models import ClassifierModel  # noqa: E402
 
 
 def _load_config(target: str) -> Any:
@@ -31,7 +33,9 @@ def _load_config(target: str) -> Any:
 def _resolve_model_config(app_config: Any, input_dim: int | None) -> TransformersModelConfig:
     raw_config = app_config.model
     payload: Dict[str, Any] = {}
-    if hasattr(raw_config, "__dict__"):
+    if is_dataclass(raw_config):
+        payload.update(asdict(raw_config))
+    elif hasattr(raw_config, "__dict__"):
         payload.update(vars(raw_config))
     elif hasattr(raw_config, "_asdict"):
         payload.update(raw_config._asdict())  # type: ignore[attr-defined]
@@ -39,10 +43,16 @@ def _resolve_model_config(app_config: Any, input_dim: int | None) -> Transformer
         payload.update(raw_config.as_dict())  # type: ignore[attr-defined]
     else:
         payload.update(dict(raw_config))
+    resolved_vocab_size = payload.get("vocab_size")
+    if resolved_vocab_size is not None and int(resolved_vocab_size) <= 0:
+        resolved_vocab_size = None
+    if resolved_vocab_size is not None:
+        payload["vocab_size"] = int(resolved_vocab_size)
     resolved_input_dim = input_dim or payload.get("input_dim")
-    if resolved_input_dim is None:
+    if resolved_vocab_size is None and resolved_input_dim is None:
         raise ValueError("Model configuration must define --input-dim or store input_dim.")
-    payload["input_dim"] = int(resolved_input_dim)
+    if resolved_input_dim is not None:
+        payload["input_dim"] = int(resolved_input_dim)
     payload.setdefault("num_outputs", getattr(raw_config, "num_outputs", 1))
     return TransformersModelConfig(**payload)
 
@@ -50,7 +60,11 @@ def _resolve_model_config(app_config: Any, input_dim: int | None) -> Transformer
 def _load_checkpoint(model: ClassifierModel, checkpoint_path: Path) -> None:
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     if isinstance(checkpoint, dict):
-        state_dict = checkpoint.get("state_dict") or checkpoint.get("model")
+        state_dict = (
+            checkpoint.get("model_state_dict")
+            or checkpoint.get("state_dict")
+            or checkpoint.get("model")
+        )
         if state_dict is None:
             model.load_state_dict(checkpoint, strict=False)
             return
@@ -106,8 +120,16 @@ def _export_to_tflite(onnx_path: Path, tflite_path: Path) -> None:
 
 
 def _build_dummy_input(
-    batch_size: int, sequence_length: int, input_dim: int, device: torch.device
+    batch_size: int,
+    sequence_length: int,
+    input_dim: int | None,
+    vocab_size: int | None,
+    device: torch.device,
 ) -> torch.Tensor:
+    if vocab_size is not None and vocab_size > 0:
+        return torch.zeros(batch_size, sequence_length, dtype=torch.long, device=device)
+    if input_dim is None or input_dim <= 0:
+        raise ValueError("input_dim must be a positive integer when vocab_size is not set.")
     return torch.randn(batch_size, sequence_length, input_dim, device=device)
 
 
@@ -174,11 +196,16 @@ def main() -> None:
     model        = ClassifierModel(model_config).to(device)
     _load_checkpoint(model, args.checkpoint)
 
+    vocab_size = getattr(model_config, "vocab_size", None)
+    if vocab_size is not None and int(vocab_size) <= 0:
+        vocab_size = None
+
     dummy_input = _build_dummy_input(batch_size       = args.batch_size,
-                                      sequence_length = args.sequence_length,
-                                      input_dim       = model_config.input_dim,
-                                      device          = device,
-                                     )
+                                     sequence_length = args.sequence_length,
+                                     input_dim       = getattr(model_config, "input_dim", None),
+                                     vocab_size      = vocab_size,
+                                     device          = device,
+                                    )
 
     _export_to_onnx(model,
                     args.onnx_out,

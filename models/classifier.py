@@ -27,14 +27,18 @@ class ClassifierModel(nn.Module):
 
         self.token_embedding: Optional[nn.Embedding] = None
 
-        if config.vocab_size is not None:
+        vocab_size = getattr(config, "vocab_size", None)
+        if vocab_size is not None and int(vocab_size) > 0:
             
-            self.token_embedding = nn.Embedding(config.vocab_size,
+            self.token_embedding = nn.Embedding(int(vocab_size),
                                                 config.embed_dim,
                                                 padding_idx=0)
             self.input_proj      = None
         else:
-            self.input_proj = nn.Linear(config.input_dim, config.embed_dim)
+            input_dim = getattr(config, "input_dim", None)
+            if input_dim is None or int(input_dim) <= 0:
+                raise ValueError("input_dim must be a positive integer when vocab_size is not set.")
+            self.input_proj = nn.Linear(int(input_dim), config.embed_dim)
 
         max_positions       = config.max_length + (1 if config.use_cls_token else 0)
 
