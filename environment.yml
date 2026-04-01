@@ -21,4 +21,5 @@ dependencies:
   - pip
   - pip:
       - -e ../transformer-core
+      - -e ../trainer-core
       - transformers==4.57.3

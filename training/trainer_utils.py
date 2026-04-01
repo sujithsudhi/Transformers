@@ -27,15 +27,44 @@ def build_cross_entropy_loss() -> nn.Module:
     return nn.CrossEntropyLoss()
 
 
+def _resolve_wandb_bool_env(name: str) -> Optional[bool]:
+    value = os.getenv(name)
+    if value is None:
+        return None
+
+    lowered = value.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    return bool(lowered)
+
+
+def _resolve_wandb_value(env_name: str, config_value: Optional[str], default: Optional[str] = None) -> Optional[str]:
+    env_value = os.getenv(env_name)
+    if env_value not in {None, ""}:
+        return env_value
+    if config_value not in {None, ""}:
+        return config_value
+    return default
+
+
 def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"], Optional[Callable[[Dict[str, Any]], None]]]:
     if wandb is None:
         print("wandb is not installed; skipping experiment logging.")
         return None, None
-    if os.getenv("WANDB_DISABLED", "").lower() in {"1", "true", "yes"}:
-        print("WANDB_DISABLED detected; skipping experiment logging.")
+
+    disabled_override = _resolve_wandb_bool_env("WANDB_DISABLED")
+    if disabled_override is None:
+        disabled = bool(getattr(app_config, "wandb_disabled", False))
+    else:
+        disabled = disabled_override
+
+    if disabled:
+        print("Weights & Biases logging disabled; skipping experiment logging.")
         return None, None
 
-    api_key = getattr(app_config, "wandb_api_key", None) or os.getenv("WANDB_API_KEY")
+    api_key = _resolve_wandb_value("WANDB_API_KEY", getattr(app_config, "wandb_api_key", None))
     if api_key:
         os.environ.setdefault("WANDB_API_KEY", str(api_key))
         try:
@@ -43,9 +72,13 @@ def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"]
         except Exception as exc:  # pragma: no cover - network edge cases
             print(f"Failed to authenticate with Weights & Biases: {exc}")
 
-    project = getattr(app_config, "wandb_project", None) or os.getenv("WANDB_PROJECT", "transformers-imdb")
-    entity = getattr(app_config, "wandb_entity", None) or os.getenv("WANDB_ENTITY")
-    run_name = getattr(app_config, "wandb_run_name", None) or os.getenv("WANDB_NAME")
+    project = _resolve_wandb_value(
+        "WANDB_PROJECT",
+        getattr(app_config, "wandb_project", None),
+        default="transformers-imdb",
+    )
+    entity = _resolve_wandb_value("WANDB_ENTITY", getattr(app_config, "wandb_entity", None))
+    run_name = _resolve_wandb_value("WANDB_NAME", getattr(app_config, "wandb_run_name", None))
 
     run_config: Dict[str, Any] = {
         "data": _to_serializable(app_config.data),

@@ -1,7 +1,7 @@
-import os
-import sys
-import tarfile, urllib.request
+import tarfile
+import urllib.request
 from pathlib import Path
+from typing import Sequence
 
 import logging
 
@@ -111,15 +111,14 @@ class Tokenize(Dataset):
     def __init__(self, 
                  texts, 
                  labels, 
-                 tokenizer_name="bert-base-uncased", 
+                 tokenizer, 
                  max_length = 256):
         """
         """
         
-        self.texts        = texts
-        self.labels       = labels 
-        self.tokenizer    = AutoTokenizer.from_pretrained(tokenizer_name)
-        
+        self.texts        = list(texts)
+        self.labels       = list(labels)
+        self.tokenizer    = tokenizer
         self.max_length   = max_length
 
         # Expose metadata expected by the trainer/model wiring.
@@ -130,21 +129,28 @@ class Tokenize(Dataset):
         return len(self.texts)
     
     def __getitem__(self, index):
-        
-        text  = self.texts[index]
-        label = self.labels[index]
+        return self.texts[index], self.labels[index]
 
-        encoded = self.tokenizer(text,
+
+class BatchTokenizer:
+    def __init__(self, tokenizer, max_length: int):
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __call__(self, batch: Sequence[tuple[str, int]]) -> dict[str, dict[str, torch.Tensor] | torch.Tensor]:
+        texts = [text for text, _ in batch]
+        labels = [label for _, label in batch]
+
+        encoded = self.tokenizer(texts,
                                  truncation     = True,
                                  padding        = "max_length",
                                  max_length     = self.max_length,
                                  return_tensors = "pt")
-        
-        target = torch.tensor(label, dtype=torch.float32).unsqueeze(0)
 
-        return { "inputs"  : {"inputs"         : encoded["input_ids"].squeeze(0),
-                              "attention_mask" : encoded["attention_mask"].squeeze(0)},
-                 "targets" : target,
+        targets = torch.tensor(labels, dtype=torch.float32).unsqueeze(1)
+        return { "inputs"  : {"inputs"         : encoded["input_ids"],
+                              "attention_mask" : encoded["attention_mask"]},
+                 "targets" : targets,
                }
 
 class DataPrep:
@@ -153,7 +159,9 @@ class DataPrep:
                  batch_size  = 32,
                  num_workers = 8,
                  max_tokens  = 256,
-                 url_path    = "" ):
+                 url_path    = "",
+                 tokenizer_name = "bert-base-uncased",
+                 pin_memory  = True ):
         """
         """
         
@@ -162,6 +170,8 @@ class DataPrep:
         self.num_workers = num_workers
         self.max_tokens  = max_tokens
         self.url_path    = url_path
+        self.tokenizer_name = tokenizer_name
+        self.pin_memory  = pin_memory
         self.feat_dim    = None
 
     def prep(self, split = "both"):
@@ -170,27 +180,35 @@ class DataPrep:
         dataloader   = IMDBDataRead(path=self.data_path, url_path= self.url_path)
         
         datasplit    = dataloader.extract_data()
+        tokenizer    = AutoTokenizer.from_pretrained(self.tokenizer_name)
+        collate_fn   = BatchTokenizer(tokenizer=tokenizer, max_length=self.max_tokens)
 
         train_ds     = Tokenize(texts          = datasplit["Train"]["text"],
                                 labels         = datasplit["Train"]["label"],
-                                tokenizer_name = "bert-base-uncased",
+                                tokenizer      = tokenizer,
                                 max_length     = self.max_tokens)
         
         test_ds      = Tokenize(texts          = datasplit["Test"]["text"],
                                 labels         = datasplit["Test"]["label"],
-                                tokenizer_name = "bert-base-uncased",
+                                tokenizer      = tokenizer,
                                 max_length     = self.max_tokens)
         
         train_loader = DataLoader(train_ds, 
                                   batch_size  = self.batch_size, 
                                   shuffle     = True,
                                   num_workers = self.num_workers,
-                                  drop_last   = False)
+                                  drop_last   = False,
+                                  pin_memory  = self.pin_memory,
+                                  persistent_workers = self.num_workers > 0,
+                                  collate_fn  = collate_fn)
 
         test_loader  = DataLoader(test_ds, 
                                   batch_size  = self.batch_size,
                                   num_workers = self.num_workers,
-                                  drop_last   = False)
+                                  drop_last   = False,
+                                  pin_memory  = self.pin_memory,
+                                  persistent_workers = self.num_workers > 0,
+                                  collate_fn  = collate_fn)
         
 
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -49,16 +48,6 @@ def main() -> None:
 
     app_config = load_config_target("configs.imdb:IMDBConfig")
 
-    wandb_api_key = getattr(app_config, "wandb_api_key", None)
-
-    if wandb_api_key:
-        os.environ["WANDB_API_KEY"] = str(wandb_api_key)
-
-    if getattr(app_config, "wandb_disabled", False):
-        os.environ["WANDB_DISABLED"] = "true"
-    else:
-        os.environ.pop("WANDB_DISABLED", None)
-
     wandb_run, wandb_logger = init_wandb_run(app_config)
 
     # Validate configuration contract before applying overrides.
@@ -66,12 +55,15 @@ def main() -> None:
         raise TypeError("Configuration object must expose 'data', 'model', and 'training'.")
 
     data_cfg = app_config.data
+    dataloader_cfg = getattr(app_config, "dataloader", None)
 
     ImdbData = DataPrep(data_path     = data_cfg.data_path,
-                        batch_size    = data_cfg.batch_size,
+                        batch_size    = getattr(dataloader_cfg, "batch_size", data_cfg.batch_size),
                         max_tokens    = data_cfg.max_tokens,
-                        num_workers   = data_cfg.num_workers,
-                        url_path      = data_cfg.url_path)
+                        num_workers   = getattr(dataloader_cfg, "num_workers", data_cfg.num_workers),
+                        url_path      = data_cfg.url_path,
+                        tokenizer_name= getattr(data_cfg, "tokenizer_name", "bert-base-uncased"),
+                        pin_memory    = getattr(dataloader_cfg, "pin_memory", True))
     
     # Preparing the training and test data.
     # Reading and tokenizing

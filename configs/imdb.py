@@ -20,14 +20,15 @@ from .transformers import TransformersModelConfig
 class IMDBDataConfig(BaseDataConfig):
     """Data loading parameters for the IMDB sentiment dataset."""
 
-    data_path    : Path = Path("D:\\Datasets\\Basics\\IMDB")
-    cache_dir    : Path = Path("data/cache/imdb")
-    batch_size   : int  = 512
-    max_tokens   : int  = 512
-    num_workers  : int  = 8
-    dataset_name : str  = "imdb"
-    dataset_root : Path = Path("data/imdb")
-    url_path     : str  = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
+    data_path      : Path = Path("D:\\Datasets\\Basics\\IMDB")
+    cache_dir      : Path = Path("data/cache/imdb")
+    batch_size     : int  = 512
+    max_tokens     : int  = 512
+    num_workers    : int  = 8
+    dataset_name   : str  = "imdb"
+    dataset_root   : Path = Path("data/imdb")
+    url_path       : str  = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
+    tokenizer_name : str  = "bert-base-uncased"
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,6 @@ class IMDBConfig(AppConfig):
     history_path    : Path                 = Path("results/imdb_history.json")
     plot_path       : Path                 = Path("results/imdb_history.png")
     checkpoint_path : Path                 = Path("results/imdb_transformer.pt")
-    wandb_disabled  : bool                 = True
+    wandb_disabled  : bool                 = False
     wandb_project   : str                  = "transformers-imdb"
     wandb_run_name  : str                  = "Custom Layers"

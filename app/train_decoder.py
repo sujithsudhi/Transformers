@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -49,12 +48,12 @@ class DecoderLanguageModel(nn.Module):
                                            dropout   = config.dropout,
                                            method    = "trainable")
         
-        self.decoder = nn.ModuleList(TransformerDecoderLayer(embedDim        = config.embed_dim,
-                                                             numHeads        = config.num_heads,
-                                                             mlpRatio        = config.mlp_ratio,
-                                                             dropout         = config.dropout,
-                                                             attentionDropout= config.attention_dropout,
-                                                             flash_attention = config.use_flash_attn)
+        self.decoder = nn.ModuleList(TransformerDecoderLayer(embed_dim         = config.embed_dim,
+                                                             num_heads         = config.num_heads,
+                                                             mlp_ratio         = config.mlp_ratio,
+                                                             dropout           = config.dropout,
+                                                             attention_dropout = config.attention_dropout,
+                                                             flash_attention   = config.use_flash_attn)
                                     for _ in range(config.depth)
                                     )
         
@@ -106,16 +105,6 @@ def main() -> None:
 
     # Loading application config
     app_config = load_config_target("configs.tinystories:TinyStoriesConfig")
-
-    # Setting  up wandDB
-    wandb_api_key = getattr(app_config, "wandb_api_key", None)
-    if wandb_api_key:
-        os.environ["WANDB_API_KEY"] = str(wandb_api_key)
-
-    if getattr(app_config, "wandb_disabled", False):
-        os.environ["WANDB_DISABLED"] = "true"
-    else:
-        os.environ.pop("WANDB_DISABLED", None)
 
     wandb_run, wandb_logger = init_wandb_run(app_config)
 

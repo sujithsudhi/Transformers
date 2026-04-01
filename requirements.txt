@@ -1,4 +1,5 @@
 -e ../transformer-core
+-e ../trainer-core
 torch==2.2.0
 torchvision==0.17.0
 torchaudio==2.2.0

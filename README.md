@@ -210,7 +210,10 @@ Optional environment variables:
 - `WANDB_PROJECT` (default: `transformers-imdb`)
 - `WANDB_ENTITY` for team/workspace names
 - `WANDB_NAME` to override the run display name
-- Config fields: `IMDBConfig.wandb_api_key`, `wandb_project`, `wandb_entity`, `wandb_run_name`, `wandb_disabled`
+- `WANDB_DISABLED=true` to skip logging without editing config
+- Config fields: `wandb_api_key`, `wandb_project`, `wandb_entity`, `wandb_run_name`, `wandb_disabled`
+
+When both environment variables and config values are present, environment variables take precedence.
 
 Each run logs epoch metrics, final test results, the saved checkpoint, and history JSON as
 artifacts for later analysis. Set `WANDB_DISABLED=true` to skip logging without editing the

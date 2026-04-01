@@ -1,5 +1,7 @@
 """Training utilities and reusable loops."""
 
+from trainer_core import TrainingConfig, Trainer, evaluate, fit, load_training_config, train_one_epoch
+
 from .trainer_utils import (
     build_loss,
     build_optimizer,
@@ -10,14 +12,6 @@ from .trainer_utils import (
     maybe_plot_history,
     maybe_save_history,
     prepare_classification_labels,
-)
-from .training import (
-    TrainingConfig,
-    Trainer,
-    evaluate,
-    fit,
-    load_training_config,
-    train_one_epoch,
 )
 
 __all__ = [

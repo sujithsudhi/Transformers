@@ -49,11 +49,12 @@ class ClassifierModel(nn.Module):
 
 ############################## From here we start the actual Tranformer block ###########################################
         
-        self.encoder        = nn.ModuleList(TransformerEncoderLayer(embedDim          = config.embed_dim,
-                                                                    numHeads          = config.num_heads,
-                                                                    mlpRatio          = config.mlp_ratio,
+        self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
+                                                                    num_heads         = config.num_heads,
+                                                                    mlp_ratio         = config.mlp_ratio,
                                                                     dropout           = config.dropout,
-                                                                    attentionDropout  = config.attention_dropout)
+                                                                    attention_dropout = config.attention_dropout,
+                                                                    flash_attention   = config.use_flash_attn)
                                             for _ in range(config.depth))
 
 ############################## Connects the classification head ###########################################
