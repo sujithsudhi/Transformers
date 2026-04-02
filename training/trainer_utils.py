@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Mapping
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 import torch
 from torch import nn
@@ -16,8 +16,31 @@ except ImportError:  # wandb is optional; training should continue without it.
 from tool.utils import _to_serializable
 
 
-def build_optimizer(model: nn.Module, lr: float, weight_decay: float) -> torch.optim.Optimizer:
-    return torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+def build_optimizer(
+    model: nn.Module,
+    lr: float,
+    weight_decay: float,
+    *,
+    name: str = "adamw",
+    betas: Optional[Sequence[float]] = None,
+    eps: Optional[float] = None,
+) -> torch.optim.Optimizer:
+    optimizer_name = name.strip().lower()
+    if optimizer_name != "adamw":
+        raise ValueError(f"Unsupported optimizer '{name}'. Only AdamW is currently implemented.")
+
+    optimizer_kwargs: Dict[str, Any] = {
+        "lr": float(lr),
+        "weight_decay": float(weight_decay),
+    }
+    if betas is not None:
+        if len(betas) != 2:
+            raise ValueError("betas must contain exactly two values.")
+        optimizer_kwargs["betas"] = (float(betas[0]), float(betas[1]))
+    if eps is not None:
+        optimizer_kwargs["eps"] = float(eps)
+
+    return torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
 
 
 def build_loss() -> nn.Module:

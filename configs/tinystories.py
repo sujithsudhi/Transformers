@@ -80,7 +80,7 @@ class TinyStoriesOptimizerConfig(BaseOptimizerConfig):
     name         : str   = "adamw"
     lr           : float = 3e-4
     weight_decay : float = 0.1
-    betas        : float = (0.9, 0.95)
+    betas        : tuple[float, float] = (0.9, 0.95)
     eps          : float = 1e-8
 
 

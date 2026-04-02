@@ -82,7 +82,10 @@ class DecoderLanguageModel(nn.Module):
             inputs = inputs.long()
 
         x = self.token_embedding(inputs)
-        x = self.position(x)
+        position_offset = 0
+        if past_kvs is not None and past_kvs:
+            position_offset = past_kvs[0][0].size(2)
+        x = self.position(x, offset=position_offset)
 
         presents: list[tuple[Tensor, Tensor]] = []
         for idx, layer in enumerate(self.decoder):
@@ -144,7 +147,15 @@ def main() -> None:
     model = DecoderLanguageModel(model_config)
 
     training_cfg = app_config.training
-    optimizer = build_optimizer(model, lr=training_cfg.lr, weight_decay=training_cfg.weight_decay)
+    optimizer_cfg = getattr(app_config, "optimizer", None)
+    optimizer = build_optimizer(
+        model,
+        lr=getattr(optimizer_cfg, "lr", training_cfg.lr),
+        weight_decay=getattr(optimizer_cfg, "weight_decay", training_cfg.weight_decay),
+        name=getattr(optimizer_cfg, "name", "adamw"),
+        betas=getattr(optimizer_cfg, "betas", None),
+        eps=getattr(optimizer_cfg, "eps", None),
+    )
     ce_loss = build_cross_entropy_loss()
 
     def loss_fn(logits: Tensor, targets: Tensor) -> Tensor:
@@ -197,7 +208,7 @@ def main() -> None:
                 eta_min=float(training_cfg.min_lr),
             )
 
-    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/tinystories_encoder.pt")))
+    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/tiny_stories_transformer.pt")))
     checkpoint_path = checkpoint_path.expanduser().resolve()
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -229,14 +240,19 @@ def main() -> None:
     maybe_plot_history(history, plot_path)
 
     best_state = trainer.best_model_state_dict()
+    checkpoint_config = {
+        "model": _to_serializable(model_config),
+        "training": _to_serializable(app_config.training),
+        "data": _to_serializable(app_config.data),
+    }
+    for section_name in ("dataloader", "optimizer", "loss"):
+        section_value = getattr(app_config, section_name, None)
+        if section_value is not None:
+            checkpoint_config[section_name] = _to_serializable(section_value)
     torch.save(
         {
             "model_state_dict": best_state,
-            "config": {
-                "model": _to_serializable(model_config),
-                "training": _to_serializable(app_config.training),
-                "data": _to_serializable(app_config.data),
-            },
+            "config": checkpoint_config,
         },
         checkpoint_path,
     )

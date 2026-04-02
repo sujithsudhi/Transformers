@@ -235,14 +235,19 @@ def main() -> None:
         raise KeyError("Checkpoint missing embedded configuration under 'config'.")
 
     data_cfg = config.get("data") or {}
+    dataloader_cfg = config.get("dataloader") or {}
     model_cfg = config.get("model") or {}
 
-    valData = DataPrep(data_path  = data_cfg.get("data_path") or data_cfg.get("dataset_root"),
-                       batch_size = args.batch_size or data_cfg.get("batch_size", 32),
-                       max_tokens = data_cfg.get("max_tokens", 256),
-                       num_workers = data_cfg.get("num_workers", 0),
-                       url_path = data_cfg.get("url_path", ""),
-                      )
+    valData = DataPrep(
+        data_path=data_cfg.get("data_path") or data_cfg.get("dataset_root") or data_cfg.get("cache_dir"),
+        batch_size=args.batch_size or dataloader_cfg.get("batch_size", data_cfg.get("batch_size", 32)),
+        max_tokens=data_cfg.get("max_tokens", 256),
+        num_workers=dataloader_cfg.get("num_workers", data_cfg.get("num_workers", 0)),
+        url_path=data_cfg.get("url_path", ""),
+        tokenizer_name=data_cfg.get("tokenizer_name", "bert-base-uncased"),
+        pin_memory=dataloader_cfg.get("pin_memory", True),
+        download=data_cfg.get("download", True),
+    )
     
     split = "train" if args.split == "train" else "test"
     dataloader  = valData.prep(split=split)

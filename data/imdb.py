@@ -21,13 +21,15 @@ class IMDBDataRead:
     def __init__(self, 
                  path=None,
                  url_path= "",
-                 trainTestValRation = {"Train" : 70, "Test": 20, "Val": 10}):
+                 trainTestValRation = {"Train" : 70, "Test": 20, "Val": 10},
+                 download: bool = True):
         """
         """
         
         self.data_split = trainTestValRation
         self.data_path  = Path(path)
         self.url_path   = url_path 
+        self.download   = download
 
     def _read_files(self, path, format="*.txt"):
         """
@@ -53,22 +55,27 @@ class IMDBDataRead:
         train_path = path / "train"
         test_path  = path / "test"
 
-        if train_path.exists() and test_path.exists() and train_path.is_dir() and test_path.is_dir():
-            info("Train and Test data for IMDB data already exists")
+        if not (train_path.exists() and test_path.exists() and train_path.is_dir() and test_path.is_dir()):
+            raise FileNotFoundError(
+                "Expected extracted IMDB folders at '{}'. Missing 'train/' or 'test/' subdirectories."
+                .format(path)
+            )
 
-            train_pos = self._read_files(path=train_path / "pos")
-            train_neg = self._read_files(path=train_path / "neg")
+        info("Train and Test data for IMDB data already exists")
 
-            test_pos = self._read_files(path=test_path / "pos")
-            test_neg = self._read_files(path=test_path / "neg")
+        train_pos = self._read_files(path=train_path / "pos")
+        train_neg = self._read_files(path=train_path / "neg")
 
-            train_data = {"text": train_pos["texts"] + train_neg["texts"], "label": train_pos["label"] + train_neg["label"]}
-            test_data = {"text": test_pos["texts"] + test_neg["texts"], "label": test_pos["label"] + test_neg["label"]}
+        test_pos = self._read_files(path=test_path / "pos")
+        test_neg = self._read_files(path=test_path / "neg")
 
-            info("Read training and test datasets")
-            info("Number of train dataset : positive - {}, negative {}".format(len(train_pos["texts"]), len(train_neg["texts"])))
-            info("Number of test dataset  : positive - {}, negative {}".format(len(test_pos["texts"]), len(test_neg["texts"])))
-        
+        train_data = {"text": train_pos["texts"] + train_neg["texts"], "label": train_pos["label"] + train_neg["label"]}
+        test_data = {"text": test_pos["texts"] + test_neg["texts"], "label": test_pos["label"] + test_neg["label"]}
+
+        info("Read training and test datasets")
+        info("Number of train dataset : positive - {}, negative {}".format(len(train_pos["texts"]), len(train_neg["texts"])))
+        info("Number of test dataset  : positive - {}, negative {}".format(len(test_pos["texts"]), len(test_neg["texts"])))
+
         return {"Train":train_data, "Test": test_data}
 
             
@@ -90,6 +97,14 @@ class IMDBDataRead:
 
         tar_path = self.data_path / "aclImdb_v1.tar.gz"
         if not tar_path.exists():
+            if not self.download:
+                raise FileNotFoundError(
+                    "IMDB archive not found at '{}' and download is disabled.".format(tar_path)
+                )
+            if not self.url_path:
+                raise ValueError(
+                    "url_path must be set to download IMDB when the local archive is missing."
+                )
             info("Downloading dataset from {} to the location : {}".format(self.url_path, tar_path))
             urllib.request.urlretrieve(self.url_path, tar_path)
         else:
@@ -161,7 +176,8 @@ class DataPrep:
                  max_tokens  = 256,
                  url_path    = "",
                  tokenizer_name = "bert-base-uncased",
-                 pin_memory  = True ):
+                 pin_memory  = True,
+                 download    = True ):
         """
         """
         
@@ -172,12 +188,13 @@ class DataPrep:
         self.url_path    = url_path
         self.tokenizer_name = tokenizer_name
         self.pin_memory  = pin_memory
+        self.download    = download
         self.feat_dim    = None
 
     def prep(self, split = "both"):
         """
         """
-        dataloader   = IMDBDataRead(path=self.data_path, url_path= self.url_path)
+        dataloader   = IMDBDataRead(path=self.data_path, url_path=self.url_path, download=self.download)
         
         datasplit    = dataloader.extract_data()
         tokenizer    = AutoTokenizer.from_pretrained(self.tokenizer_name)

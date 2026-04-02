@@ -39,8 +39,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="results/model.pt",
-        help="Path to the model checkpoint produced during training.",
+        default=None,
+        help="Path to the model checkpoint produced during training (defaults to config checkpoint_path).",
     )
     parser.add_argument(
         "--split",
@@ -80,18 +80,26 @@ def _build_dataloader(
     batch_size: int,
     max_tokens: int,
     num_workers: int,
+    data_path: Optional[Path],
     cache_dir: Optional[Path],
     dataset_name: str,
     dataset_root: Optional[Path],
+    url_path: str,
+    tokenizer_name: str,
+    pin_memory: bool,
     download: bool,
 ):
     train_loader, test_loader = build_imdb_dataloaders(
         batch_size=batch_size,
         max_tokens=max_tokens,
         num_workers=num_workers,
+        data_path=data_path,
         cache_dir=cache_dir,
         dataset_name=dataset_name,
         dataset_root=dataset_root,
+        url_path=url_path,
+        tokenizer_name=tokenizer_name,
+        pin_memory=pin_memory,
         download=download,
     )
     return train_loader if split == "train" else test_loader
@@ -129,17 +137,28 @@ def main() -> None:
 
     app_config = load_config_target(args.config)
     data_cfg = app_config.data
+    dataloader_cfg = getattr(app_config, "dataloader", None)
     model_cfg = asdict(app_config.model)
 
-    batch_size = args.batch_size or data_cfg.batch_size
+    checkpoint_path = Path(
+        args.checkpoint or getattr(app_config, "checkpoint_path", "results/model.pt")
+    ).expanduser().resolve()
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+    batch_size = args.batch_size or getattr(dataloader_cfg, "batch_size", data_cfg.batch_size)
     dataloader = _build_dataloader(
         split=args.split,
         batch_size=batch_size,
         max_tokens=data_cfg.max_tokens,
-        num_workers=data_cfg.num_workers,
+        num_workers=getattr(dataloader_cfg, "num_workers", data_cfg.num_workers),
+        data_path=getattr(data_cfg, "data_path", None),
         cache_dir=data_cfg.cache_dir,
         dataset_name=getattr(data_cfg, "dataset_name", "imdb"),
         dataset_root=getattr(data_cfg, "dataset_root", None),
+        url_path=getattr(data_cfg, "url_path", ""),
+        tokenizer_name=getattr(data_cfg, "tokenizer_name", "bert-base-uncased"),
+        pin_memory=getattr(dataloader_cfg, "pin_memory", True),
         download=getattr(data_cfg, "download", True),
     )
 

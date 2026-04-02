@@ -172,7 +172,14 @@ def _generate_text(model: torch.nn.Module,
             input_ids = input_ids[:, -max_length:]
 
         with torch.no_grad():
-            logits, past_kvs = model(next_token, past_kvs=past_kvs, use_cache=True)
+            cached_length = 0
+            if past_kvs is not None and past_kvs:
+                cached_length = past_kvs[0][0].size(2)
+
+            if cached_length >= max_length:
+                logits, past_kvs = model(input_ids, use_cache=True)
+            else:
+                logits, past_kvs = model(next_token, past_kvs=past_kvs, use_cache=True)
 
     return tokenizer.decode(input_ids[0], skip_special_tokens=True)
 

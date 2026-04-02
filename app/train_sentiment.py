@@ -86,8 +86,16 @@ def main() -> None:
     model                     = ClassifierModel(model_config)
 
     training_cfg              = app_config.training
+    optimizer_cfg             = getattr(app_config, "optimizer", None)
 
-    optimizer                 = build_optimizer(model, lr=training_cfg.lr, weight_decay=training_cfg.weight_decay)
+    optimizer                 = build_optimizer(
+                                  model,
+                                  lr=getattr(optimizer_cfg, "lr", training_cfg.lr),
+                                  weight_decay=getattr(optimizer_cfg, "weight_decay", training_cfg.weight_decay),
+                                  name=getattr(optimizer_cfg, "name", "adamw"),
+                                  betas=getattr(optimizer_cfg, "betas", None),
+                                  eps=getattr(optimizer_cfg, "eps", None),
+                                 )
     loss_fn                   = build_loss()
 
     training_config           = load_training_config({"epochs"                     : training_cfg.epochs,
@@ -103,7 +111,7 @@ def main() -> None:
                                                      }
                                                     )
 
-    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/model.pt")))
+    checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/imdb_transformer.pt")))
     checkpoint_path = checkpoint_path.expanduser().resolve()
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -145,13 +153,19 @@ def main() -> None:
     test_metrics["examples"] = int(total_examples)
 
     best_state = trainer.best_model_state_dict()
+    checkpoint_config = {
+        "model": _to_serializable(model_config),
+        "training": _to_serializable(app_config.training),
+        "data": _to_serializable(app_config.data),
+    }
+    for section_name in ("dataloader", "optimizer", "loss"):
+        section_value = getattr(app_config, section_name, None)
+        if section_value is not None:
+            checkpoint_config[section_name] = _to_serializable(section_value)
     torch.save(
         {
             "model_state_dict"   :  best_state,
-            "config": {"model"   : _to_serializable(app_config.model),
-                       "training": _to_serializable(app_config.training),
-                       "data"    : _to_serializable(app_config.data),
-                      },
+            "config": checkpoint_config,
         },
         checkpoint_path,
     )

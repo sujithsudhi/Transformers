@@ -27,6 +27,7 @@ class IMDBDataConfig(BaseDataConfig):
     num_workers    : int  = 8
     dataset_name   : str  = "imdb"
     dataset_root   : Path = Path("data/imdb")
+    download       : bool = True
     url_path       : str  = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
     tokenizer_name : str  = "bert-base-uncased"
 

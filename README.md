@@ -34,17 +34,18 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-This repository now depends on the sibling `transformer-core` package in
+This repository now depends on the sibling `transformer-core` and `trainer-core` packages in
 editable mode. The expected local layout is:
 
 ```text
 Repos/
   Transformers/
   transformer-core/
+  trainer-core/
 ```
 
 If you are setting the project up on a new machine, clone the
-`transformer-core` repo beside this one before running the install commands
+`transformer-core` and `trainer-core` repos beside this one before running the install commands
 above. The extraction workflow and ongoing shared-core development notes are documented in
 [docs/transformer-core-migration.md](/c:/Users/Sujith/Dev/Repos/Transformers/docs/transformer-core-migration.md).
 
@@ -61,9 +62,8 @@ python -m app.train_sentiment
 ```
 
 `app/train_sentiment.py` loads `configs.imdb:IMDBConfig`, which captures dataset path,
-tokenisation, model hyperparameters, and training knobs. `data/imdb.py` will download
-the IMDB dataset (via Hugging Face `datasets`) into `data/imdb/` on first run. Cached
-JSONL files remain ignored by Git.
+tokenisation, model hyperparameters, and training knobs. `data/imdb.py` downloads and
+extracts the IMDB archive into the configured dataset location on first run.
 
 Metrics and training curves are written to the paths defined by the active config
 (`history_path`, `plot_path`).
@@ -71,10 +71,10 @@ Metrics and training curves are written to the paths defined by the active confi
 ## Training (TinyStories Language Model)
 
 ```bash
-python -m app.train_encoder
+python -m app.train_decoder
 ```
 
-`app/train_encoder.py` loads `configs.tinystories:TinyStoriesConfig`, streams the
+`app/train_decoder.py` loads `configs.tinystories:TinyStoriesConfig`, streams the
 TinyStories dataset via `data/tinystory.py`, and tokenizes using `GPT2TokenizerFast`.
 Tokenized streams are cached under the configured `cache_dir` to speed up repeated
 runs. Checkpoints, training history, and plots are written to the paths configured in
@@ -86,7 +86,7 @@ Run standalone validation against the test or train split, loading a specific ch
 
 ```bash
 python -m val.validate \
-  --checkpoint results/model.pt \
+  --checkpoint results/imdb_transformer.pt \
   --config configs.imdb:IMDBConfig \
   --split test \
   --output-dir results/validation
