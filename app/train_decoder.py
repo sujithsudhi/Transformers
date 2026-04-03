@@ -39,21 +39,19 @@ class DecoderLanguageModel(nn.Module):
             raise ValueError("vocab_size must be set for language modeling.")
 
         self.config = config
+        self.use_rope = bool(getattr(config, "use_rope", True))
         self.token_embedding = nn.Embedding(config.vocab_size,
                                             config.embed_dim,
                                             padding_idx=0)
-        
-        self.position = PositionalEncoding(max_len   = config.max_length,
-                                           embed_dim = config.embed_dim,
-                                           dropout   = config.dropout,
-                                           method    = "trainable")
-        
-        self.decoder = nn.ModuleList(TransformerDecoderLayer(embed_dim         = config.embed_dim,
-                                                             num_heads         = config.num_heads,
-                                                             mlp_ratio         = config.mlp_ratio,
-                                                             dropout           = config.dropout,
-                                                             attention_dropout = config.attention_dropout,
-                                                             flash_attention   = config.use_flash_attn)
+
+        self.position: Optional[PositionalEncoding] = None
+        if not self.use_rope:
+            self.position = PositionalEncoding(max_len   = config.max_length,
+                                               embed_dim = config.embed_dim,
+                                               dropout   = config.dropout,
+                                               method    = "trainable")
+
+        self.decoder = nn.ModuleList(TransformerDecoderLayer(config = config)
                                     for _ in range(config.depth)
                                     )
         
@@ -82,10 +80,11 @@ class DecoderLanguageModel(nn.Module):
             inputs = inputs.long()
 
         x = self.token_embedding(inputs)
-        position_offset = 0
-        if past_kvs is not None and past_kvs:
-            position_offset = past_kvs[0][0].size(2)
-        x = self.position(x, offset=position_offset)
+        if self.position is not None:
+            position_offset = 0
+            if past_kvs is not None and past_kvs:
+                position_offset = past_kvs[0][0].size(2)
+            x = self.position(x, offset=position_offset)
 
         presents: list[tuple[Tensor, Tensor]] = []
         for idx, layer in enumerate(self.decoder):

@@ -88,14 +88,12 @@ def main() -> None:
     training_cfg              = app_config.training
     optimizer_cfg             = getattr(app_config, "optimizer", None)
 
-    optimizer                 = build_optimizer(
-                                  model,
-                                  lr=getattr(optimizer_cfg, "lr", training_cfg.lr),
-                                  weight_decay=getattr(optimizer_cfg, "weight_decay", training_cfg.weight_decay),
-                                  name=getattr(optimizer_cfg, "name", "adamw"),
-                                  betas=getattr(optimizer_cfg, "betas", None),
-                                  eps=getattr(optimizer_cfg, "eps", None),
-                                 )
+    optimizer                 = build_optimizer(model,
+                                                lr           = getattr(optimizer_cfg, "lr", training_cfg.lr),
+                                                weight_decay = getattr(optimizer_cfg, "weight_decay", training_cfg.weight_decay),
+                                                name         = getattr(optimizer_cfg, "name", "adamw"),
+                                                betas        = getattr(optimizer_cfg, "betas", None),
+                                                eps          = getattr(optimizer_cfg, "eps", None))
     loss_fn                   = build_loss()
 
     training_config           = load_training_config({"epochs"                     : training_cfg.epochs,

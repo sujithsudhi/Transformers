@@ -7,6 +7,25 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 
+@dataclass(frozen=True)
+class AttentionBlockConfig:
+    """Compatibility view consumed by transformer-core block resolvers."""
+
+    embedding_dim : int
+    num_heads     : int
+    dropout       : float
+    qkv_bias      : bool = True
+
+
+@dataclass(frozen=True)
+class MLPBlockConfig:
+    """Compatibility view consumed by transformer-core block resolvers."""
+
+    hidden_dim : int
+    activation : str = "gelu"
+    dropout    : float = 0.0
+
+
 
 @dataclass(frozen=True)
 class BaseDataConfig:
@@ -26,13 +45,50 @@ class BaseModelConfig:
     depth             : int           = 4
     num_heads         : int           = 4
     mlp_ratio         : float         = 2.0
+    mlp_hidden_dim    : Optional[int] = None
+    activation        : str           = "gelu"
     dropout           : float         = 0.1
     attention_dropout : float         = 0.1
+    qkv_bias          : bool          = True
+    pre_norm          : bool          = True
+    layer_norm_eps    : float         = 1e-5
+    drop_path         : float         = 0.0
     use_cls_token     : bool          = True
     cls_head_dim      : Optional[int] = 128
     num_outputs       : int           = 1
     pooling           : str           = "cls"
     use_flash_attn    : bool          = False
+    use_rope          : bool          = True
+    rope_base         : int           = 10000
+    attention_type    : str           = "global"
+    window_size       : Optional[int] = None
+
+    @property
+    def flash_attention(self) -> bool:
+        return self.use_flash_attn
+
+    @property
+    def attention(self) -> AttentionBlockConfig:
+        return AttentionBlockConfig(embedding_dim = self.embed_dim,
+                                    num_heads     = self.num_heads,
+                                    dropout       = self.attention_dropout,
+                                    qkv_bias      = self.qkv_bias,
+                                   )
+
+    @property
+    def mlp(self) -> MLPBlockConfig:
+        hidden_dim = self.mlp_hidden_dim
+        if hidden_dim is None:
+            hidden_dim = int(self.embed_dim * self.mlp_ratio)
+        return MLPBlockConfig(hidden_dim = int(hidden_dim),
+                              activation = self.activation,
+                              dropout    = self.dropout,
+                             )
+
+    def resolve_attention_kwargs(self) -> Dict[str, object]:
+        return {"use_rope" : self.use_rope,
+                "rope_base": self.rope_base,
+               }
 
 
 @dataclass(frozen=True)

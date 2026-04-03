@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Optional
 
 import torch
@@ -40,21 +39,16 @@ class ClassifierModel(nn.Module):
                 raise ValueError("input_dim must be a positive integer when vocab_size is not set.")
             self.input_proj = nn.Linear(int(input_dim), config.embed_dim)
 
-        max_positions       = config.max_length + (1 if config.use_cls_token else 0)
-
-        self.position       = PositionalEncoding(max_len    = max_positions,
-                                                 embed_dim  = config.embed_dim,
-                                                 dropout    = config.dropout,
-                                                 method     = "trainable")
+        self.position: Optional[PositionalEncoding] = None
+        if not bool(getattr(config, "use_rope", True)):
+            self.position = PositionalEncoding(max_len   = getattr(config, "max_length", 512),
+                                               embed_dim = config.embed_dim,
+                                               dropout   = config.dropout,
+                                               method    = "trainable")
 
 ############################## From here we start the actual Tranformer block ###########################################
         
-        self.encoder        = nn.ModuleList(TransformerEncoderLayer(embed_dim         = config.embed_dim,
-                                                                    num_heads         = config.num_heads,
-                                                                    mlp_ratio         = config.mlp_ratio,
-                                                                    dropout           = config.dropout,
-                                                                    attention_dropout = config.attention_dropout,
-                                                                    flash_attention   = config.use_flash_attn)
+        self.encoder        = nn.ModuleList(TransformerEncoderLayer(config = config)
                                             for _ in range(config.depth))
 
 ############################## Connects the classification head ###########################################
@@ -130,8 +124,9 @@ class ClassifierModel(nn.Module):
             if token_mask is not None:
                 cls_mask = torch.ones(batch_size, 1, dtype=torch.bool, device=token_mask.device)
                 token_mask = torch.cat([cls_mask, token_mask], dim=1)
+        if self.position is not None:
+            x = self.position(x)
 
-        x = self.position(x)
         for layer in self.encoder:
             x = layer(x, mask=token_mask)
         x = self.norm(x)

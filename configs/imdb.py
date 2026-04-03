@@ -37,7 +37,7 @@ class IMDBModelConfig(TransformersModelConfig):
     """ClassifierModel hyperparameters tuned for IMDB classification."""
 
     embed_dim    : int   = 128
-    depth        : int   = 4
+    depth        : int   = 3
     num_heads    : int   = 4
     mlp_ratio    : float = 2.0
     cls_head_dim : int   = 128
@@ -63,7 +63,7 @@ class IMDBTrainingConfig(BaseTrainingConfig):
 class IMDBDataloaderConfig(BaseDataloaderConfig):
     """Torch DataLoader parameters for IMDB sentences."""
 
-    batch_size  : int  = 32
+    batch_size  : int  = 128
     num_workers : int  = 2
     pin_memory  : bool = True
 
@@ -103,4 +103,4 @@ class IMDBConfig(AppConfig):
     checkpoint_path : Path                 = Path("results/imdb_transformer.pt")
     wandb_disabled  : bool                 = False
     wandb_project   : str                  = "transformers-imdb"
-    wandb_run_name  : str                  = "Custom Layers"
+    wandb_run_name  : str                  = "Rope-Depth-3-Embed-128-AdamW-2e-4-Batch-128"
