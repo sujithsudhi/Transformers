@@ -70,8 +70,8 @@ class TinyStoriesTrainingConfig(BaseTrainingConfig):
 class TinyStoriesDataloaderConfig(BaseDataloaderConfig):
     """Torch DataLoader parameters for TinyStories token streams."""
 
-    batch_size  : int  = 128
-    num_workers : int  = 8
+    batch_size  : int  = 64
+    num_workers : int  = 4
     pin_memory  : bool = True
 
 

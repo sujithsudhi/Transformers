@@ -107,9 +107,10 @@ def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"]
         "model": _to_serializable(app_config.model),
         "training": _to_serializable(app_config.training),
     }
-    dataset_cfg = getattr(app_config, "dataset", None)
-    if dataset_cfg is not None:
-        run_config["dataset"] = _to_serializable(dataset_cfg)
+    for section_name in ("dataset", "dataloader", "optimizer", "loss"):
+        section_cfg = getattr(app_config, section_name, None)
+        if section_cfg is not None:
+            run_config[section_name] = _to_serializable(section_cfg)
 
     run = wandb.init(
         project=project,

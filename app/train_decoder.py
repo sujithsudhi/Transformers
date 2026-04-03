@@ -54,7 +54,6 @@ class DecoderLanguageModel(nn.Module):
         self.decoder = nn.ModuleList(TransformerDecoderLayer(config = config)
                                     for _ in range(config.depth)
                                     )
-        
         self.norm = nn.LayerNorm(config.embed_dim)
         self.lm_head = nn.Linear(config.embed_dim, config.vocab_size, bias=False)
 
@@ -103,10 +102,9 @@ class DecoderLanguageModel(nn.Module):
 
 
 def main() -> None:
-    torch.manual_seed(42)
-
     # Loading application config
     app_config = load_config_target("configs.tinystories:TinyStoriesConfig")
+    torch.manual_seed(int(getattr(app_config.training, "seed", 42)))
 
     wandb_run, wandb_logger = init_wandb_run(app_config)
 
@@ -140,6 +138,34 @@ def main() -> None:
     train_loader, val_loader, tokenizer = data_prep.prep()
     vocab_size = tokenizer.vocab_size
 
+    train_batches = len(train_loader)
+    val_batches = len(val_loader)
+    train_examples = len(train_loader.dataset)
+    val_examples = len(val_loader.dataset)
+    batch_size = getattr(dataloader_cfg, "batch_size", 32)
+    loader_stats: Dict[str, Any] = {
+        "train_examples": train_examples,
+        "val_examples": val_examples,
+        "train_batches_per_epoch": train_batches,
+        "val_batches_per_epoch": val_batches,
+        "tokens_per_batch": batch_size * data_cfg.max_tokens,
+    }
+    print(
+        "TinyStories runtime: "
+        + json.dumps(
+            {
+                "batch_size": batch_size,
+                "num_workers": getattr(dataloader_cfg, "num_workers", 0),
+                **loader_stats,
+            }
+        )
+    )
+    if wandb_run is not None:
+        try:
+            wandb_run.config.update({"runtime": loader_stats}, allow_val_change=True)
+        except Exception:
+            pass
+
     model_config = replace(app_config.model,
                            vocab_size=vocab_size,
                            max_length=data_cfg.max_tokens)
@@ -166,6 +192,7 @@ def main() -> None:
                                             "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
                                             "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
                                             "use_amp"                 : training_cfg.use_amp,
+                                            "amp_dtype"               : training_cfg.amp_dtype,
                                             "log_interval"            : training_cfg.log_interval,
                                             "non_blocking"            : training_cfg.non_blocking,
                                             "early_stopping_patience" : training_cfg.early_stopping_patience,
