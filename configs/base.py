@@ -100,6 +100,7 @@ class BaseTrainingConfig:
     gradient_clip_norm           : float | None = None
     gradient_accumulation_steps  : int          = 1
     use_amp                      : str | bool   = "auto"
+    amp_dtype                    : str          = "auto"
     log_interval                 : int          = 50
     non_blocking                 : bool         = True
     early_stopping_patience      : int | None   = 10

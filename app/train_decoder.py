@@ -124,6 +124,7 @@ def _build_training_config(training_cfg: Any):
             "gradient_clip_norm": training_cfg.gradient_clip_norm,
             "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
             "use_amp": training_cfg.use_amp,
+            "amp_dtype": training_cfg.amp_dtype,
             "log_interval": training_cfg.log_interval,
             "non_blocking": training_cfg.non_blocking,
             "early_stopping_patience": training_cfg.early_stopping_patience,

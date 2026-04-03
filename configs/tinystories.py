@@ -56,6 +56,8 @@ class TinyStoriesTrainingConfig(BaseTrainingConfig):
     epochs                  : int        = 300
     lr                      : float      = 3e-4
     weight_decay            : float      = 0.01
+    use_amp                 : str | bool = True
+    amp_dtype               : str        = "fp16"
     early_stopping_patience : int | None = 10
     lr_reduction_patience   : int | None = 5
     warmup_epochs           : int        = 5
