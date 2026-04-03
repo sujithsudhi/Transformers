@@ -17,10 +17,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.train_decoder import DecoderLanguageModel  # noqa: E402
-from data.tinystory import DataPrep, DataStreamer  # noqa: E402
+from data import DataStreamer, TinyStoriesDataPrep  # noqa: E402
 from tool.utils import _to_serializable, load_config_target  # noqa: E402
-from training import evaluate, load_training_config  # noqa: E402
-from training.trainer_utils import build_cross_entropy_loss  # noqa: E402
+from training import build_loss, evaluate, load_training_config  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -225,16 +224,16 @@ def main() -> None:
     model = model.to(device)
 
     if not args.no_eval:
-        data_prep = DataPrep(dataset=dataset_name,
-                             block_size=data_cfg.max_tokens,
-                             batch_size=batch_size,
-                             shuffle=False,
-                             num_workers=getattr(dataloader_cfg, "num_workers", 0),
-                             pin_memory=getattr(dataloader_cfg, "pin_memory", True),
-                             cache_dir=str(getattr(data_cfg, "cache_dir", "data/cache/tinystories")),
-                             tokenizer_name=tokenizer_name,
-                             stride=getattr(data_cfg, "stride", None),
-                            )
+        data_prep = TinyStoriesDataPrep(dataset=dataset_name,
+                                        block_size=data_cfg.max_tokens,
+                                        batch_size=batch_size,
+                                        shuffle=False,
+                                        num_workers=getattr(dataloader_cfg, "num_workers", 0),
+                                        pin_memory=getattr(dataloader_cfg, "pin_memory", True),
+                                        cache_dir=str(getattr(data_cfg, "cache_dir", "data/cache/tinystories")),
+                                        tokenizer_name=tokenizer_name,
+                                        stride=getattr(data_cfg, "stride", None),
+                                       )
         cache_path = data_prep._cache_path(args.split, tokenizer_name)
         if cache_path is None or not cache_path.exists():
             raise FileNotFoundError(
@@ -257,11 +256,15 @@ def main() -> None:
             import itertools
             dataloader = itertools.islice(dataloader, args.max_batches)
 
-        ce_loss = build_cross_entropy_loss()
+        loss_cfg = getattr(app_config, "loss", None)
+        criterion = build_loss(
+            name=getattr(loss_cfg, "name", "crossentropyloss"),
+            beta=getattr(loss_cfg, "beta", 1.0),
+        )
 
         def loss_fn(logits: Tensor, targets: Tensor) -> Tensor:
             vocab = logits.size(-1)
-            return ce_loss(logits.view(-1, vocab), targets.view(-1))
+            return criterion(logits.view(-1, vocab), targets.view(-1))
 
         metrics = evaluate(model=model,
                             dataloader=dataloader,

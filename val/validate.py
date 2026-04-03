@@ -19,6 +19,7 @@ from data import build_imdb_dataloaders  # noqa: E402
 from models import ClassifierModel  # noqa: E402
 from tool.utils import _to_serializable, load_config_target  # noqa: E402
 from training import (  # noqa: E402
+    build_loss,
     collect_classification_outputs,
     compute_class_distribution,
     evaluate,
@@ -131,10 +132,6 @@ def main() -> None:
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    checkpoint_path = Path(args.checkpoint).expanduser().resolve()
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
     app_config = load_config_target(args.config)
     data_cfg = app_config.data
     dataloader_cfg = getattr(app_config, "dataloader", None)
@@ -188,11 +185,12 @@ def main() -> None:
         training_config.device = args.device
 
     device = torch.device(training_config.device)
-    loss_fn: torch.nn.Module
-    if model_config.num_outputs == 1:
-        loss_fn = torch.nn.BCEWithLogitsLoss()
-    else:
-        loss_fn = torch.nn.CrossEntropyLoss()
+    loss_cfg = getattr(app_config, "loss", None)
+    default_loss_name = "bcewithlogits" if model_config.num_outputs == 1 else "crossentropyloss"
+    loss_fn = build_loss(
+        name=getattr(loss_cfg, "name", default_loss_name),
+        beta=getattr(loss_cfg, "beta", 1.0),
+    )
     model = model.to(device)
     metrics = evaluate(
         model=model,

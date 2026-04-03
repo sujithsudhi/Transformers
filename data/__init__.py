@@ -5,7 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from .imdb import IMDBDataRead, DataPrep, Tokenize
+from .imdb import (DataPrep as IMDBDataPrep,
+                   IMDBDataRead,
+                   Tokenize as IMDBTokenizedDataset,
+                  )
+from .tinystory import (DataPrep as TinyStoriesDataPrep,
+                        DataRead as TinyStoriesDataRead,
+                        DataStreamer,
+                        Tokenizer as TinyStoriesTokenizer,
+                       )
+
+# Backwards-compatible alias for the IMDB training entry-point.
+DataPrep = IMDBDataPrep
+Tokenize = IMDBTokenizedDataset
 
 
 def build_imdb_dataloaders(
@@ -26,7 +38,7 @@ def build_imdb_dataloaders(
         raise ValueError(f"Unsupported dataset_name for IMDB loader helper: {dataset_name}")
 
     resolved_data_path = data_path or dataset_root or cache_dir or Path("data/imdb")
-    prep = DataPrep(
+    prep = IMDBDataPrep(
         data_path=resolved_data_path,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -51,7 +63,13 @@ def download_imdb_dataset(
 __all__ = [
     "IMDBDataRead",
     "DataPrep",
+    "IMDBDataPrep",
+    "IMDBTokenizedDataset",
     "Tokenize",
+    "TinyStoriesDataPrep",
+    "TinyStoriesDataRead",
+    "TinyStoriesTokenizer",
+    "DataStreamer",
     "build_imdb_dataloaders",
     "download_imdb_dataset",
 ]

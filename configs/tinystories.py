@@ -20,16 +20,16 @@ from .transformers import TransformersModelConfig
 class TinyStoriesDataConfig(BaseDataConfig):
     """Dataset and preprocessing parameters for TinyStories."""
 
-    data_path    : Path = Path("D:\\Datasets\\Basics\\TinyStories")
-    cache_dir    : Path = Path("data/cache/tinystories")
-    max_tokens   : int  = 512
-    dataset_name : str  = "roneneldan/TinyStories"
-    dataset_root : Path = Path("data/tinystories")
-    url_path     : str  = None
-    stride       : Optional[int] = None
-    use_map      : bool = True
-    map_num_proc : int  = 8
-    map_batch_size: int = 1000
+    data_path      : Path          = Path("D:\\Datasets\\Basics\\TinyStories")
+    cache_dir      : Path          = Path("data/cache/tinystories")
+    max_tokens     : int           = 512
+    dataset_name   : str           = "roneneldan/TinyStories"
+    dataset_root   : Path          = Path("data/tinystories")
+    url_path       : Optional[str] = None
+    stride         : Optional[int] = None
+    use_map        : bool          = True
+    map_num_proc   : int           = 8
+    map_batch_size : int           = 1000
 
 
 @dataclass(frozen=True)
@@ -68,8 +68,8 @@ class TinyStoriesTrainingConfig(BaseTrainingConfig):
 class TinyStoriesDataloaderConfig(BaseDataloaderConfig):
     """Torch DataLoader parameters for TinyStories token streams."""
 
-    batch_size  : int  = 32
-    num_workers : int  = 4
+    batch_size  : int  = 128
+    num_workers : int  = 8
     pin_memory  : bool = True
 
 
@@ -77,11 +77,11 @@ class TinyStoriesDataloaderConfig(BaseDataloaderConfig):
 class TinyStoriesOptimizerConfig(BaseOptimizerConfig):
     """Optimizer configuration tuned for decoder language modeling."""
 
-    name         : str   = "adamw"
-    lr           : float = 3e-4
-    weight_decay : float = 0.1
+    name         : str               = "adamw"
+    lr           : float             = 3e-4
+    weight_decay : float             = 0.1
     betas        : tuple[float, float] = (0.9, 0.95)
-    eps          : float = 1e-8
+    eps          : float             = 1e-8
 
 
 @dataclass(frozen=True)
@@ -91,14 +91,14 @@ class TinyStoriesLossConfig(BaseLossConfig):
     name : str = "crossentropyloss"
 
     def as_dict(self) -> Dict[str, object]:
-        return { "name" : self.name}
+        return {"name" : self.name}
 
 
 @dataclass(frozen=True)
 class TinyStoriesConfig(AppConfig):
     """Application config describing TinyStories language-model training."""
 
-    name            : str                  = "tinystories"
+    name            : str                         = "tinystories"
     data            : TinyStoriesDataConfig       = field(default_factory=TinyStoriesDataConfig)
     model           : TinyStoriesModelConfig      = field(default_factory=TinyStoriesModelConfig)
     training        : TinyStoriesTrainingConfig   = field(default_factory=TinyStoriesTrainingConfig)

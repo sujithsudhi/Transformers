@@ -1,15 +1,38 @@
-"""Configuration package exposing base and application-specific classes."""
+"""Configuration package exposing shared and application-specific config classes."""
 
-from .base import (
-    AppConfig,
-    BaseDataConfig,
-    BaseDatasetConfig,
-    BaseDataloaderConfig,
-    BaseLossConfig,
-    BaseModelConfig,
-    BaseOptimizerConfig,
-    BaseTrainingConfig,
-)
+from .base import (AppConfig,
+                   BaseDataConfig,
+                   BaseDatasetConfig,
+                   BaseDataloaderConfig,
+                   BaseLossConfig,
+                   BaseModelConfig,
+                   BaseOptimizerConfig,
+                   BaseTrainingConfig,
+                  )
+from .imdb import (IMDBConfig,
+                   IMDBDataConfig,
+                   IMDBDataloaderConfig,
+                   IMDBLossConfig,
+                   IMDBModelConfig,
+                   IMDBOptimizerConfig,
+                   IMDBTrainingConfig,
+                  )
+from .tinystories import (TinyStoriesConfig,
+                          TinyStoriesDataConfig,
+                          TinyStoriesDataloaderConfig,
+                          TinyStoriesLossConfig,
+                          TinyStoriesModelConfig,
+                          TinyStoriesOptimizerConfig,
+                          TinyStoriesTrainingConfig,
+                         )
+from .transformers import (TransformersConfig,
+                           TransformersDataConfig,
+                           TransformersDataloaderConfig,
+                           TransformersLossConfig,
+                           TransformersModelConfig,
+                           TransformersOptimizerConfig,
+                           TransformersTrainingConfig,
+                          )
 
 __all__ = [
     "AppConfig",
@@ -20,52 +43,25 @@ __all__ = [
     "BaseModelConfig",
     "BaseOptimizerConfig",
     "BaseTrainingConfig",
+    "TransformersConfig",
+    "TransformersDataConfig",
+    "TransformersDataloaderConfig",
+    "TransformersLossConfig",
+    "TransformersModelConfig",
+    "TransformersOptimizerConfig",
+    "TransformersTrainingConfig",
+    "IMDBConfig",
+    "IMDBDataConfig",
+    "IMDBDataloaderConfig",
+    "IMDBLossConfig",
+    "IMDBModelConfig",
+    "IMDBOptimizerConfig",
+    "IMDBTrainingConfig",
+    "TinyStoriesConfig",
+    "TinyStoriesDataConfig",
+    "TinyStoriesDataloaderConfig",
+    "TinyStoriesLossConfig",
+    "TinyStoriesModelConfig",
+    "TinyStoriesOptimizerConfig",
+    "TinyStoriesTrainingConfig",
 ]
-try:
-    from .transformers import (
-        TransformersConfig,
-        TransformersDataConfig,
-        TransformersDataloaderConfig,
-        TransformersLossConfig,
-        TransformersModelConfig,
-        TransformersOptimizerConfig,
-        TransformersTrainingConfig,
-    )
-except ModuleNotFoundError:
-    TransformersConfig = (
-        TransformersDataConfig
-    ) = TransformersDataloaderConfig = TransformersLossConfig = TransformersModelConfig = (
-        TransformersOptimizerConfig
-    ) = TransformersTrainingConfig = None  # type: ignore
-else:
-    __all__.extend(
-        [
-            "TransformersConfig",
-            "TransformersDataConfig",
-            "TransformersDataloaderConfig",
-            "TransformersLossConfig",
-            "TransformersModelConfig",
-            "TransformersOptimizerConfig",
-            "TransformersTrainingConfig",
-        ]
-    )
-from .imdb import IMDBConfig, IMDBDataConfig, IMDBModelConfig, IMDBTrainingConfig
-from .tinystories import (
-    TinyStoriesConfig,
-    TinyStoriesDataConfig,
-    TinyStoriesModelConfig,
-    TinyStoriesTrainingConfig,
-)
-
-__all__.extend(
-    [
-        "IMDBConfig",
-        "IMDBDataConfig",
-        "IMDBModelConfig",
-        "IMDBTrainingConfig",
-        "TinyStoriesConfig",
-        "TinyStoriesDataConfig",
-        "TinyStoriesModelConfig",
-        "TinyStoriesTrainingConfig",
-    ]
-)

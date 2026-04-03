@@ -26,7 +26,6 @@ class MLPBlockConfig:
     dropout    : float = 0.0
 
 
-
 @dataclass(frozen=True)
 class BaseDataConfig:
     """Base dataset and preprocessing configuration."""
@@ -93,6 +92,7 @@ class BaseModelConfig:
 class BaseTrainingConfig:
     """Default training loop configuration."""
 
+    seed                         : int          = 42
     epochs                       : int          = 5
     device                       : str          = "auto"
     lr                           : float        = 3e-4

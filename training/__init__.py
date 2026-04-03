@@ -3,6 +3,7 @@
 from trainer_core import TrainingConfig, Trainer, evaluate, fit, load_training_config, train_one_epoch
 
 from .trainer_utils import (
+    build_cross_entropy_loss,
     build_loss,
     build_optimizer,
     build_wandb_logger,
@@ -23,6 +24,7 @@ __all__ = [
     "load_training_config",
     "build_optimizer",
     "build_loss",
+    "build_cross_entropy_loss",
     "init_wandb_run",
     "build_wandb_logger",
     "maybe_save_history",

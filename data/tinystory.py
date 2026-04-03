@@ -1,18 +1,18 @@
-from pathlib import Path
-import logging
+"""TinyStories dataset loading, tokenization, and streaming helpers."""
 
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any, Optional, Sequence
+
+import torch
+from datasets import load_dataset
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import GPT2TokenizerFast
-from datasets import load_dataset
-from torch.utils.data import Dataset, DataLoader
-from typing import Optional
-import torch
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s | %(levelname)s | %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",)
-
-from logging import info
+logger = logging.getLogger(__name__)
 
 _TOKENIZER_CACHE: dict[str, GPT2TokenizerFast] = {}
 
@@ -27,88 +27,86 @@ def _get_tokenizer(tokenizer_name: str) -> GPT2TokenizerFast:
     return tokenizer
 
 
-def _torch_load(path: Path):
+def _torch_load(path: Path) -> Any:
     try:
         return torch.load(path, weights_only=False)
     except TypeError:
         return torch.load(path)
 
 
-def _encode_texts(tokenizer: GPT2TokenizerFast, texts):
+def _encode_texts(tokenizer: GPT2TokenizerFast, texts: Sequence[str]) -> dict[str, list[list[int]]]:
     # TinyStories preprocessing tokenizes whole documents first, then windows them
     # into fixed-length training chunks later. The HF warning about 1024-token inputs
     # is meant for direct model calls, so we suppress it here to avoid noisy logs.
     return tokenizer(texts, add_special_tokens=False, truncation=False, verbose=False)
 
 
-def _tokenize_batch_texts(batch, tokenizer_name: str):
-    tok = _get_tokenizer(tokenizer_name)
-    return _encode_texts(tok, batch["text"])
+def _tokenize_batch_texts(batch: dict[str, list[str]], tokenizer_name: str) -> dict[str, list[list[int]]]:
+    tokenizer = _get_tokenizer(tokenizer_name)
+    return _encode_texts(tokenizer, batch["text"])
+
 
 class DataRead:
-    def __init__(self, dataset : Optional[str] = "roneneldan/TinyStories"):
-        self.dataset = dataset
+    """Load TinyStories splits from Hugging Face datasets."""
 
-    def loadDataset(self):
-        """
-        Docstring for loadDataset
-        
-        :param self: Description
-        """
-        ds = load_dataset(self.dataset)
-        train_split = ds["train"]
-        val_split   = ds["validation"]
+    def __init__(self, dataset: Optional[str] = "roneneldan/TinyStories") -> None:
+        self.dataset = dataset or "roneneldan/TinyStories"
 
-        info("Number of train samples : {}".format(len(train_split)))
-        info("Number of validation samples : {}".format(len(val_split)))
-        info("Data schema : {}".format(train_split.features))
+    def load_dataset(self):
+        dataset = load_dataset(self.dataset)
+        train_split = dataset["train"]
+        val_split = dataset["validation"]
+
+        logger.info("Number of train samples: %s", len(train_split))
+        logger.info("Number of validation samples: %s", len(val_split))
+        logger.info("Data schema: %s", train_split.features)
 
         if len(train_split) > 0:
-            info("Sample data :{}".format(train_split[0]["text"]))
+            logger.info("Sample data: %s", train_split[0]["text"])
 
-        return ds
+        return dataset
+
+    # Backwards-compatible alias.
+    def loadDataset(self):
+        return self.load_dataset()
 
 
 class Tokenizer:
+    """Tokenize TinyStories documents into contiguous token streams."""
+
     def __init__(self,
-                 maxTokens      : int = 1024,
-                 tokenizerName  : str = "gpt2"):
-        super().__init__()
-
-        self.maxTokens = maxTokens
-        self.tokenizerName = tokenizerName
-
-        self.tokenizer = _get_tokenizer(tokenizerName)
+                 max_tokens: int = 1024,
+                 tokenizer_name: str = "gpt2",
+                ) -> None:
+        self.max_tokens = max_tokens
+        self.tokenizer_name = tokenizer_name
+        self.tokenizer = _get_tokenizer(tokenizer_name)
         self.eos = self.tokenizer.eos_token_id
         self.vocab_size = self.tokenizer.vocab_size
 
-        info("Vocabulary size : {}".format(self.tokenizer.vocab_size))
-    
-    def tokenizeSplit(self, 
-                      split, 
-                      cache_path: Optional[Path] = None, 
-                      batch_size: int = 1000):
-        """
-        Docstring for tokenizeSplit
-        
-        :param self: Description
-        :param split: Description
-        """
-        
+        # Backwards-compatible attribute aliases.
+        self.maxTokens = self.max_tokens
+        self.tokenizerName = self.tokenizer_name
 
+        logger.info("Vocabulary size: %s", self.tokenizer.vocab_size)
+
+    def tokenize_split(self,
+                       split,
+                       cache_path: Optional[Path] = None,
+                       batch_size: int = 1000,
+                      ) -> list[int]:
         if cache_path is not None and cache_path.exists():
-            info("Loading cached tokens from {}, it may take sometime..".format(cache_path))
+            logger.info("Loading cached tokens from %s", cache_path)
             return _torch_load(cache_path)
 
-        tokens = []
+        tokens: list[int] = []
         texts = split["text"]
-        iterator = range(0, len(texts), batch_size)
-        iterator = tqdm(iterator, desc="Tokenizing", leave=False)
+        iterator = tqdm(range(0, len(texts), batch_size), desc="Tokenizing", leave=False)
 
         for start in iterator:
-            batch = texts[start:start + batch_size]
+            batch = texts[start : start + batch_size]
             encoded = _encode_texts(self.tokenizer, batch)
-            
+
             for ids in encoded["input_ids"]:
                 tokens.extend(ids)
                 tokens.append(self.eos)
@@ -116,29 +114,30 @@ class Tokenizer:
         if cache_path is not None:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(tokens, cache_path)
-            info("Saved cached tokens to {}".format(cache_path))
-        
+            logger.info("Saved cached tokens to %s", cache_path)
+
         return tokens
 
-    def tokenizeSplitMap(self,
-                         split,
-                         cache_path : Optional[Path] = None,
-                         batch_size : int = 1000,
-                         num_proc   : int = 8):
-        
+    def tokenize_split_map(self,
+                           split,
+                           cache_path: Optional[Path] = None,
+                           batch_size: int = 1000,
+                           num_proc: int = 8,
+                          ) -> list[int]:
         if cache_path is not None and cache_path.exists():
-            info("Loading cached tokens from {}".format(cache_path))
+            logger.info("Loading cached tokens from %s", cache_path)
             return _torch_load(cache_path)
 
-        tokenized = split.map(_tokenize_batch_texts,
-                              batched        = True,
-                              batch_size     = batch_size,
-                              num_proc       = num_proc,
-                              remove_columns = ["text"],
-                              fn_kwargs      = {"tokenizer_name": self.tokenizerName},
-                             )
+        tokenized = split.map(
+            _tokenize_batch_texts,
+            batched=True,
+            batch_size=batch_size,
+            num_proc=num_proc,
+            remove_columns=["text"],
+            fn_kwargs={"tokenizer_name": self.tokenizer_name},
+        )
 
-        tokens = []
+        tokens: list[int] = []
         for ids in tokenized["input_ids"]:
             tokens.extend(ids)
             tokens.append(self.eos)
@@ -146,135 +145,158 @@ class Tokenizer:
         if cache_path is not None:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(tokens, cache_path)
-            info("Saved cached tokens to {}".format(cache_path))
+            logger.info("Saved cached tokens to %s", cache_path)
 
         return tokens
-    
+
+    # Backwards-compatible aliases.
+    def tokenizeSplit(self, split, cache_path: Optional[Path] = None, batch_size: int = 1000):
+        return self.tokenize_split(split, cache_path=cache_path, batch_size=batch_size)
+
+    def tokenizeSplitMap(
+        self,
+        split,
+        cache_path: Optional[Path] = None,
+        batch_size: int = 1000,
+        num_proc: int = 8,
+    ):
+        return self.tokenize_split_map(
+            split,
+            cache_path=cache_path,
+            batch_size=batch_size,
+            num_proc=num_proc,
+        )
+
+
 class DataStreamer(Dataset):
-    def __init__(self, tokens, blockSize, stride: int):
+    """Slice a contiguous token stream into autoregressive training windows."""
 
-        self.tokens    = torch.tensor(tokens, dtype=torch.long)
-        self.blockSize = blockSize
-        self.stride    = max(1, stride)
-
+    def __init__(self, tokens: Sequence[int], blockSize: int, stride: int) -> None:
         super().__init__()
+        self.tokens = torch.tensor(tokens, dtype=torch.long)
+        self.block_size = blockSize
+        self.stride = max(1, stride)
 
-    def __len__(self):
-        """
-        Docstring for __len__
-        
-        :param self: Description
-        """
-        usable = len(self.tokens) - (self.blockSize + 1)
+        # Backwards-compatible attribute alias.
+        self.blockSize = self.block_size
+
+    def __len__(self) -> int:
+        usable = len(self.tokens) - (self.block_size + 1)
         if usable < 0:
             return 0
         return (usable // self.stride) + 1
 
-    def __getitem__(self, index):
-
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         start = index * self.stride
-        chunk  = self.tokens[start: start + self.blockSize + 1]
-        x      = chunk[:-1]
-        y      = chunk[1:]
+        chunk = self.tokens[start : start + self.block_size + 1]
+        inputs = chunk[:-1]
+        targets = chunk[1:]
+        return inputs, targets
 
-        return x, y
 
 class DataPrep:
+    """Prepare TinyStories dataloaders and tokenizer state."""
+
     def __init__(self,
-                 dataset     : str = "roneneldan/TinyStories",
-                 block_size  : int = 256,
-                 batch_size  : int = 32,
-                 shuffle     : bool = True,
-                 num_workers : int = 8,
-                 pin_memory  : bool = True,
-                 cache_dir   : Optional[str] = "data/cache/tinystories",
+                 dataset: str = "roneneldan/TinyStories",
+                 block_size: int = 256,
+                 batch_size: int = 32,
+                 shuffle: bool = True,
+                 num_workers: int = 8,
+                 pin_memory: bool = True,
+                 cache_dir: Optional[str] = "data/cache/tinystories",
                  tokenizer_name: str = "gpt2",
-                 stride      : Optional[int] = None,
-                 use_map     : bool = False,
+                 stride: Optional[int] = None,
+                 use_map: bool = False,
                  map_num_proc: int = 8,
-                 map_batch_size: int = 1000):
-        
-        self.dataset    = dataset
-        self.blockSize  = block_size
-        self.batchSize  = batch_size
-        self.shuffle    = shuffle
-        self.numWorkers = num_workers
+                 map_batch_size: int = 1000,
+                ) -> None:
+        self.dataset = dataset
+        self.block_size = block_size
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.cacheDir   = Path(cache_dir) if cache_dir else None
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         self.tokenizer_name = tokenizer_name
-        self.stride     = block_size if stride is None else max(1, stride)
-        self.use_map    = use_map
-        self.mapNumProc = map_num_proc
-        self.mapBatchSize = map_batch_size
+        self.stride = block_size if stride is None else max(1, stride)
+        self.use_map = use_map
+        self.map_num_proc = map_num_proc
+        self.map_batch_size = map_batch_size
+
+        # Backwards-compatible attribute aliases.
+        self.blockSize = self.block_size
+        self.batchSize = self.batch_size
+        self.numWorkers = self.num_workers
+        self.cacheDir = self.cache_dir
+        self.mapNumProc = self.map_num_proc
+        self.mapBatchSize = self.map_batch_size
 
     def _cache_path(self, split_name: str, tokenizer_name: str) -> Optional[Path]:
-        if self.cacheDir is None:
+        if self.cache_dir is None:
             return None
         safe_dataset = self.dataset.replace("/", "_")
         safe_tokenizer = tokenizer_name.replace("/", "_")
-        filename = "{}_{}_{}.pt".format(safe_dataset, split_name, safe_tokenizer)
-        return self.cacheDir / filename
+        filename = f"{safe_dataset}_{split_name}_{safe_tokenizer}.pt"
+        return self.cache_dir / filename
 
     def prep(self):
-        """
-        Docstring for prep
-        """
-        dr   = DataRead(dataset=self.dataset)
-        ds   = dr.loadDataset()
+        reader = DataRead(dataset=self.dataset)
+        dataset = reader.load_dataset()
 
-        trainData = ds["train"]
-        valData   = ds["validation"]
+        train_data = dataset["train"]
+        val_data = dataset["validation"]
 
-        tok         = Tokenizer(maxTokens=self.blockSize,
-                                tokenizerName=self.tokenizer_name)
+        tokenizer = Tokenizer(
+            max_tokens=self.block_size,
+            tokenizer_name=self.tokenizer_name,
+        )
+        train_cache_path = self._cache_path("train", tokenizer.tokenizer_name)
+        val_cache_path = self._cache_path("validation", tokenizer.tokenizer_name)
+
         if self.use_map:
-            trainTokens = tok.tokenizeSplitMap(trainData,
-                                               cache_path=self._cache_path("train", tok.tokenizerName),
-                                               batch_size=self.mapBatchSize,
-                                               num_proc=self.mapNumProc)
-            
-            valTokens   = tok.tokenizeSplitMap(valData,
-                                               cache_path=self._cache_path("validation", tok.tokenizerName),
-                                               batch_size=self.mapBatchSize,
-                                               num_proc=self.mapNumProc)
+            train_tokens = tokenizer.tokenize_split_map(
+                train_data,
+                cache_path=train_cache_path,
+                batch_size=self.map_batch_size,
+                num_proc=self.map_num_proc,
+            )
+            val_tokens = tokenizer.tokenize_split_map(
+                val_data,
+                cache_path=val_cache_path,
+                batch_size=self.map_batch_size,
+                num_proc=self.map_num_proc,
+            )
         else:
-            trainTokens = tok.tokenizeSplit(trainData,
-                                            cache_path=self._cache_path("train", tok.tokenizerName),
-                                            batch_size=self.mapBatchSize)
-            
-            valTokens   = tok.tokenizeSplit(valData,
-                                            cache_path=self._cache_path("validation", tok.tokenizerName),
-                                            batch_size=self.mapBatchSize)
+            train_tokens = tokenizer.tokenize_split(
+                train_data,
+                cache_path=train_cache_path,
+                batch_size=self.map_batch_size,
+            )
+            val_tokens = tokenizer.tokenize_split(
+                val_data,
+                cache_path=val_cache_path,
+                batch_size=self.map_batch_size,
+            )
 
+        train_dataset = DataStreamer(
+            tokens=train_tokens,
+            blockSize=self.block_size,
+            stride=self.stride,
+        )
+        val_dataset = DataStreamer(
+            tokens=val_tokens,
+            blockSize=self.block_size,
+            stride=self.stride,
+        )
 
-        trainDataset = DataStreamer(tokens     = trainTokens, 
-                                    blockSize  =  self.blockSize,
-                                    stride     =  self.stride)
-        
-        valDataset   = DataStreamer(tokens     =  valTokens,
-                                    blockSize  =  self.blockSize,
-                                    stride     =  self.stride)
-        
-        trainLoader  = DataLoader(trainDataset,
-                                  batch_size  = self.batchSize,
-                                  shuffle     = self.shuffle,
-                                  num_workers = self.numWorkers,
-                                  pin_memory  = self.pin_memory,
-                                  persistent_workers = self.numWorkers > 0)
-        
-        valLoader    = DataLoader(valDataset,
-                                  batch_size  = self.batchSize,
-                                  shuffle     = False,
-                                  num_workers = self.numWorkers,
-                                  pin_memory  = self.pin_memory,
-                                  persistent_workers = self.numWorkers > 0)
-        
-        return trainLoader, valLoader, tok
+        loader_kwargs = {
+            "batch_size": self.batch_size,
+            "num_workers": self.num_workers,
+            "pin_memory": self.pin_memory,
+            "persistent_workers": self.num_workers > 0,
+        }
+        train_loader = DataLoader(train_dataset, shuffle=self.shuffle, **loader_kwargs)
+        val_loader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
+        return train_loader, val_loader, tokenizer
 
-
-
-if __name__ == "__main__":
-
-    dp = DataPrep()
-
-    dp.prep()

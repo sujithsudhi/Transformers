@@ -82,7 +82,7 @@ class IMDBLossConfig(BaseLossConfig):
     name : str = "bcewithlogits"
 
     def as_dict(self) -> Dict[str, object]:
-        return { "name" : self.name}
+        return {"name" : self.name}
 
 
 @dataclass(frozen=True)
@@ -101,4 +101,4 @@ class IMDBConfig(AppConfig):
     checkpoint_path : Path                 = Path("results/imdb_transformer.pt")
     wandb_disabled  : bool                 = False
     wandb_project   : str                  = "transformers-imdb"
-    wandb_run_name  : str                  = "Rope-Depth-3-Embed-128-AdamW-2e-4-Batch-128"
+    wandb_run_name  : str                  = "RoPE-Depth-3-Embed-128-AdamW-2e-4-Batch-128"
