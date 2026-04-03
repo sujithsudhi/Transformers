@@ -17,13 +17,14 @@ from tool.utils import _to_serializable
 
 
 def build_optimizer(model: nn.Module,
-                    lr: float,
+                    lr   : float,
                     weight_decay: float,
                     *,
                     name: str = "adamw",
                     betas: Optional[Sequence[float]] = None,
                     eps: Optional[float] = None,
-                   ) -> torch.optim.Optimizer:
+                ) -> torch.optim.Optimizer:
+    
     optimizer_name = name.strip().lower()
     if optimizer_name != "adamw":
         raise ValueError(f"Unsupported optimizer '{name}'. Only AdamW is currently implemented.")
@@ -42,28 +43,11 @@ def build_optimizer(model: nn.Module,
     return torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
 
 
-def build_loss(*,
-               name: str = "bcewithlogits",
-               beta: float = 1.0,
-              ) -> nn.Module:
-    loss_name = name.strip().lower()
-    if loss_name in {"bce", "bceloss", "bcewithlogits", "bcewithlogitsloss"}:
-        return nn.BCEWithLogitsLoss()
-    if loss_name in {"crossentropy", "crossentropyloss", "ce"}:
-        return nn.CrossEntropyLoss()
-    if loss_name in {"mse", "mseloss"}:
-        return nn.MSELoss()
-    if loss_name in {"smoothl1", "smoothl1loss", "huber"}:
-        return nn.SmoothL1Loss(beta=float(beta))
-
-    raise ValueError(
-        f"Unsupported loss '{name}'. Expected BCEWithLogits, CrossEntropy, MSE, or SmoothL1."
-    )
-
+def build_loss() -> nn.Module:
+    return nn.BCEWithLogitsLoss()
 
 def build_cross_entropy_loss() -> nn.Module:
-    return build_loss(name="crossentropyloss")
-
+    return nn.CrossEntropyLoss()
 
 def _resolve_wandb_bool_env(name: str) -> Optional[bool]:
     value = os.getenv(name)
@@ -397,7 +381,6 @@ def compute_class_distribution(labels: torch.Tensor) -> Dict[str, int]:
 __all__ = [
     "build_optimizer",
     "build_loss",
-    "build_cross_entropy_loss",
     "init_wandb_run",
     "build_wandb_logger",
     "maybe_save_history",
