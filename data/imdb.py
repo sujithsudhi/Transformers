@@ -17,6 +17,24 @@ logging.basicConfig(level=logging.INFO,
 
 from logging import info, warning
 
+_TOKENIZER_CACHE: dict[str, object] = {}
+
+
+def _get_tokenizer(tokenizer_name: str):
+    tokenizer = _TOKENIZER_CACHE.get(tokenizer_name)
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        _TOKENIZER_CACHE[tokenizer_name] = tokenizer
+    return tokenizer
+
+
+def _torch_load(path: Path):
+    try:
+        return torch.load(path, weights_only=False)
+    except TypeError:
+        return torch.load(path)
+
+
 class IMDBDataRead:
     def __init__(self, 
                  path=None,
@@ -31,15 +49,20 @@ class IMDBDataRead:
         self.url_path   = url_path 
         self.download   = download
 
+    def _manifest_path(self, path: Path) -> Path:
+        return path.parent / "aclImdb_manifest.pt"
+
+
     def _read_files(self, path, format="*.txt"):
         """
         """
 
         reviews = {"texts": [], "label": []}
         
-        file_list = list(path.glob(format))
+        file_list = sorted(path.glob(format))
+        desc = "Reading {}/{}".format(path.parent.name, path.name)
         
-        for f in tqdm(file_list, desc="Reading reviews"):
+        for f in tqdm(file_list, desc=desc):
             
             label = 1 if f.parent.name == "pos" else 0
             text  = f.read_text(encoding="utf-8")
@@ -61,6 +84,11 @@ class IMDBDataRead:
                 .format(path)
             )
 
+        manifest_path = self._manifest_path(path)
+        if manifest_path.exists():
+            info("Loading cached IMDB manifest from {}".format(manifest_path))
+            return _torch_load(manifest_path)
+
         info("Train and Test data for IMDB data already exists")
 
         train_pos = self._read_files(path=train_path / "pos")
@@ -76,7 +104,11 @@ class IMDBDataRead:
         info("Number of train dataset : positive - {}, negative {}".format(len(train_pos["texts"]), len(train_neg["texts"])))
         info("Number of test dataset  : positive - {}, negative {}".format(len(test_pos["texts"]), len(test_neg["texts"])))
 
-        return {"Train":train_data, "Test": test_data}
+        dataset = {"Train":train_data, "Test": test_data}
+        torch.save(dataset, manifest_path)
+        info("Saved cached IMDB manifest to {}".format(manifest_path))
+
+        return dataset
 
             
     def extract_data(self):
@@ -197,7 +229,7 @@ class DataPrep:
         dataloader   = IMDBDataRead(path=self.data_path, url_path=self.url_path, download=self.download)
         
         datasplit    = dataloader.extract_data()
-        tokenizer    = AutoTokenizer.from_pretrained(self.tokenizer_name)
+        tokenizer    = _get_tokenizer(self.tokenizer_name)
         collate_fn   = BatchTokenizer(tokenizer=tokenizer, max_length=self.max_tokens)
 
         train_ds     = Tokenize(texts          = datasplit["Train"]["text"],

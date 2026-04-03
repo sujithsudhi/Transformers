@@ -139,6 +139,9 @@ def main() -> None:
     data_cfg = app_config.data
     dataloader_cfg = getattr(app_config, "dataloader", None)
     model_cfg = asdict(app_config.model)
+    loader_batch_size = getattr(dataloader_cfg, "batch_size", 32)
+    loader_num_workers = getattr(dataloader_cfg, "num_workers", 0)
+    loader_pin_memory = getattr(dataloader_cfg, "pin_memory", True)
 
     checkpoint_path = Path(
         args.checkpoint or getattr(app_config, "checkpoint_path", "results/model.pt")
@@ -146,19 +149,19 @@ def main() -> None:
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    batch_size = args.batch_size or getattr(dataloader_cfg, "batch_size", data_cfg.batch_size)
+    batch_size = args.batch_size or loader_batch_size
     dataloader = _build_dataloader(
         split=args.split,
         batch_size=batch_size,
         max_tokens=data_cfg.max_tokens,
-        num_workers=getattr(dataloader_cfg, "num_workers", data_cfg.num_workers),
+        num_workers=loader_num_workers,
         data_path=getattr(data_cfg, "data_path", None),
         cache_dir=data_cfg.cache_dir,
         dataset_name=getattr(data_cfg, "dataset_name", "imdb"),
         dataset_root=getattr(data_cfg, "dataset_root", None),
         url_path=getattr(data_cfg, "url_path", ""),
         tokenizer_name=getattr(data_cfg, "tokenizer_name", "bert-base-uncased"),
-        pin_memory=getattr(dataloader_cfg, "pin_memory", True),
+        pin_memory=loader_pin_memory,
         download=getattr(data_cfg, "download", True),
     )
 

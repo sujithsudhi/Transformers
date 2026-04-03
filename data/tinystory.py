@@ -1,8 +1,4 @@
-
 from pathlib import Path
-import os
-import sys
-
 import logging
 
 from tqdm import tqdm
@@ -12,22 +8,42 @@ from torch.utils.data import Dataset, DataLoader
 from typing import Optional
 import torch
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(_REPO_ROOT))
-
-from models.utils import TqdmReader, ProgressFileObject
-
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s | %(levelname)s | %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S",)
 
 from logging import info
 
+_TOKENIZER_CACHE: dict[str, GPT2TokenizerFast] = {}
+
+
+def _get_tokenizer(tokenizer_name: str) -> GPT2TokenizerFast:
+    tokenizer = _TOKENIZER_CACHE.get(tokenizer_name)
+    if tokenizer is None:
+        tokenizer = GPT2TokenizerFast.from_pretrained(tokenizer_name)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        _TOKENIZER_CACHE[tokenizer_name] = tokenizer
+    return tokenizer
+
+
+def _torch_load(path: Path):
+    try:
+        return torch.load(path, weights_only=False)
+    except TypeError:
+        return torch.load(path)
+
+
+def _encode_texts(tokenizer: GPT2TokenizerFast, texts):
+    # TinyStories preprocessing tokenizes whole documents first, then windows them
+    # into fixed-length training chunks later. The HF warning about 1024-token inputs
+    # is meant for direct model calls, so we suppress it here to avoid noisy logs.
+    return tokenizer(texts, add_special_tokens=False, truncation=False, verbose=False)
+
+
 def _tokenize_batch_texts(batch, tokenizer_name: str):
-    tok = GPT2TokenizerFast.from_pretrained(tokenizer_name)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-    return tok(batch["text"], add_special_tokens=False)
+    tok = _get_tokenizer(tokenizer_name)
+    return _encode_texts(tok, batch["text"])
 
 class DataRead:
     def __init__(self, dataset : Optional[str] = "roneneldan/TinyStories"):
@@ -39,17 +55,16 @@ class DataRead:
         
         :param self: Description
         """
-
         ds = load_dataset(self.dataset)
+        train_split = ds["train"]
+        val_split   = ds["validation"]
 
-        trainTexts = ds["train"]["text"]
-        valTexts   = ds["validation"]["text"]
+        info("Number of train samples : {}".format(len(train_split)))
+        info("Number of validation samples : {}".format(len(val_split)))
+        info("Data schema : {}".format(train_split.features))
 
-        info("Number of train samples : {}".format(len(trainTexts)))
-        info("Number of validation samples : {}".format(len(valTexts)))
-        info("Data schema : {}".format(ds["train"].features))
-
-        info("Sample data :{}".format(trainTexts[0]))
+        if len(train_split) > 0:
+            info("Sample data :{}".format(train_split[0]["text"]))
 
         return ds
 
@@ -63,9 +78,7 @@ class Tokenizer:
         self.maxTokens = maxTokens
         self.tokenizerName = tokenizerName
 
-        self.tokenizer = GPT2TokenizerFast.from_pretrained(tokenizerName)
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer = _get_tokenizer(tokenizerName)
         self.eos = self.tokenizer.eos_token_id
         self.vocab_size = self.tokenizer.vocab_size
 
@@ -85,7 +98,7 @@ class Tokenizer:
 
         if cache_path is not None and cache_path.exists():
             info("Loading cached tokens from {}, it may take sometime..".format(cache_path))
-            return torch.load(cache_path)
+            return _torch_load(cache_path)
 
         tokens = []
         texts = split["text"]
@@ -94,7 +107,7 @@ class Tokenizer:
 
         for start in iterator:
             batch = texts[start:start + batch_size]
-            encoded = self.tokenizer(batch, add_special_tokens=False)
+            encoded = _encode_texts(self.tokenizer, batch)
             
             for ids in encoded["input_ids"]:
                 tokens.extend(ids)
@@ -115,7 +128,7 @@ class Tokenizer:
         
         if cache_path is not None and cache_path.exists():
             info("Loading cached tokens from {}".format(cache_path))
-            return torch.load(cache_path)
+            return _torch_load(cache_path)
 
         tokenized = split.map(_tokenize_batch_texts,
                               batched        = True,
@@ -246,13 +259,15 @@ class DataPrep:
                                   batch_size  = self.batchSize,
                                   shuffle     = self.shuffle,
                                   num_workers = self.numWorkers,
-                                  pin_memory  = self.pin_memory)
+                                  pin_memory  = self.pin_memory,
+                                  persistent_workers = self.numWorkers > 0)
         
         valLoader    = DataLoader(valDataset,
                                   batch_size  = self.batchSize,
                                   shuffle     = False,
                                   num_workers = self.numWorkers,
-                                  pin_memory  = self.pin_memory)
+                                  pin_memory  = self.pin_memory,
+                                  persistent_workers = self.numWorkers > 0)
         
         return trainLoader, valLoader, tok
 

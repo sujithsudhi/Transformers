@@ -29,12 +29,10 @@ class MLPBlockConfig:
 
 @dataclass(frozen=True)
 class BaseDataConfig:
-    """Base dataset configuration with common loader parameters."""
+    """Base dataset and preprocessing configuration."""
 
     cache_dir    : Path = Path("data/cache")
-    batch_size   : int  = 32
     max_tokens   : int  = 256
-    num_workers  : int  = 0
     dataset_name : str  = "imdb"
 
 @dataclass(frozen=True)
@@ -139,7 +137,7 @@ class BaseDatasetConfig:
 class BaseDataloaderConfig:
     """Default DataLoader parameters."""
 
-    batch_size  : int  = 16
+    batch_size  : int  = 32
     num_workers : int  = 0
     pin_memory  : bool = True
 

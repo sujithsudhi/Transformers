@@ -1,4 +1,4 @@
-"""IMDB sentiment-classification configuration leveraging shared defaults."""
+"""TinyStories language-model configuration leveraging shared defaults."""
 
 from __future__ import annotations
 
@@ -18,14 +18,12 @@ from .transformers import TransformersModelConfig
 
 @dataclass(frozen=True)
 class TinyStoriesDataConfig(BaseDataConfig):
-    """Data loading parameters for the IMDB sentiment dataset."""
+    """Dataset and preprocessing parameters for TinyStories."""
 
-    data_path    : Path = Path("/media/4TB/Datasets/Basics/IMDB")
-    cache_dir    : Path = Path("data/cache/imdb")
-    batch_size   : int  = 1024
+    data_path    : Path = Path("D:\\Datasets\\Basics\\TinyStories")
+    cache_dir    : Path = Path("data/cache/tinystories")
     max_tokens   : int  = 512
-    num_workers  : int  = 8
-    dataset_name : str  = "tinystories"
+    dataset_name : str  = "roneneldan/TinyStories"
     dataset_root : Path = Path("data/tinystories")
     url_path     : str  = None
     stride       : Optional[int] = None
@@ -36,7 +34,7 @@ class TinyStoriesDataConfig(BaseDataConfig):
 
 @dataclass(frozen=True)
 class TinyStoriesModelConfig(TransformersModelConfig):
-    """ClassifierModel hyperparameters tuned for IMDB classification."""
+    """Decoder-model hyperparameters tuned for TinyStories language modeling."""
 
     embed_dim      : int   = 512
     depth          : int   = 4
@@ -47,11 +45,13 @@ class TinyStoriesModelConfig(TransformersModelConfig):
     input_dim      : int   = 0
     vocab_size     : int   = 0
     use_flash_attn : bool  = True
+    use_rope       : bool  = True
+    attention_type : str   = "global"
 
 
 @dataclass(frozen=True)
 class TinyStoriesTrainingConfig(BaseTrainingConfig):
-    """Training loop defaults for IMDB sentiment fine-tuning."""
+    """Training loop defaults for TinyStories language modeling."""
 
     epochs                  : int        = 300
     lr                      : float      = 3e-4
@@ -66,7 +66,7 @@ class TinyStoriesTrainingConfig(BaseTrainingConfig):
 
 @dataclass(frozen=True)
 class TinyStoriesDataloaderConfig(BaseDataloaderConfig):
-    """Torch DataLoader parameters for IMDB sentences."""
+    """Torch DataLoader parameters for TinyStories token streams."""
 
     batch_size  : int  = 32
     num_workers : int  = 4
@@ -75,7 +75,7 @@ class TinyStoriesDataloaderConfig(BaseDataloaderConfig):
 
 @dataclass(frozen=True)
 class TinyStoriesOptimizerConfig(BaseOptimizerConfig):
-    """Optimizer configuration tuned for binary sentiment targets."""
+    """Optimizer configuration tuned for decoder language modeling."""
 
     name         : str   = "adamw"
     lr           : float = 3e-4
@@ -86,7 +86,7 @@ class TinyStoriesOptimizerConfig(BaseOptimizerConfig):
 
 @dataclass(frozen=True)
 class TinyStoriesLossConfig(BaseLossConfig):
-    """Loss specification for binary sentiment classification."""
+    """Loss specification for next-token prediction."""
 
     name : str = "crossentropyloss"
 
@@ -96,7 +96,7 @@ class TinyStoriesLossConfig(BaseLossConfig):
 
 @dataclass(frozen=True)
 class TinyStoriesConfig(AppConfig):
-    """Application config describing IMDB sentiment fine-tuning."""
+    """Application config describing TinyStories language-model training."""
 
     name            : str                  = "tinystories"
     data            : TinyStoriesDataConfig       = field(default_factory=TinyStoriesDataConfig)
@@ -110,5 +110,5 @@ class TinyStoriesConfig(AppConfig):
     checkpoint_path : Path                        = Path("results/tiny_stories_transformer.pt")
     wandb_disabled  : bool                        = False
     wandb_project   : str                         = "transformers-tinystories"
-    wandb_run_name  : str                         = "Flash Attention"
-    tokenizer_name : str                          = "gpt2"
+    wandb_run_name  : str                         = "RoPE-Depth-4-Embed-512-Flash-AdamW-3e-4"
+    tokenizer_name  : str                         = "gpt2"

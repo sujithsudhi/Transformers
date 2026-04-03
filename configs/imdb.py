@@ -18,13 +18,11 @@ from .transformers import TransformersModelConfig
 
 @dataclass(frozen=True)
 class IMDBDataConfig(BaseDataConfig):
-    """Data loading parameters for the IMDB sentiment dataset."""
+    """Dataset and preprocessing parameters for IMDB sentiment."""
 
     data_path      : Path = Path("D:\\Datasets\\Basics\\IMDB")
     cache_dir      : Path = Path("data/cache/imdb")
-    batch_size     : int  = 512
     max_tokens     : int  = 512
-    num_workers    : int  = 8
     dataset_name   : str  = "imdb"
     dataset_root   : Path = Path("data/imdb")
     download       : bool = True

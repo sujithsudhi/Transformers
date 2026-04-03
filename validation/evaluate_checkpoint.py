@@ -237,15 +237,20 @@ def main() -> None:
     data_cfg = config.get("data") or {}
     dataloader_cfg = config.get("dataloader") or {}
     model_cfg = config.get("model") or {}
+    # Prefer the dedicated dataloader section. Keep data_cfg fallbacks only for
+    # older checkpoints created before the config split was cleaned up.
+    loader_batch_size = dataloader_cfg.get("batch_size", data_cfg.get("batch_size", 32))
+    loader_num_workers = dataloader_cfg.get("num_workers", data_cfg.get("num_workers", 0))
+    loader_pin_memory = dataloader_cfg.get("pin_memory", True)
 
     valData = DataPrep(
         data_path=data_cfg.get("data_path") or data_cfg.get("dataset_root") or data_cfg.get("cache_dir"),
-        batch_size=args.batch_size or dataloader_cfg.get("batch_size", data_cfg.get("batch_size", 32)),
+        batch_size=args.batch_size or loader_batch_size,
         max_tokens=data_cfg.get("max_tokens", 256),
-        num_workers=dataloader_cfg.get("num_workers", data_cfg.get("num_workers", 0)),
+        num_workers=loader_num_workers,
         url_path=data_cfg.get("url_path", ""),
         tokenizer_name=data_cfg.get("tokenizer_name", "bert-base-uncased"),
-        pin_memory=dataloader_cfg.get("pin_memory", True),
+        pin_memory=loader_pin_memory,
         download=data_cfg.get("download", True),
     )
     
