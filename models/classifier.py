@@ -9,9 +9,20 @@ from transformer_core import PositionalEncoding, TransformerEncoderLayer
 
 
 class ClassifierModel(nn.Module):
-    """Transformer encoder backbone for sentiment classification."""
+    """
+    Transformer encoder backbone for sentiment classification.
+    """
 
-    def __init__(self, config: Any) -> None:
+    def __init__(self,
+                 config : Any,
+                ) -> None:
+        """
+        Initialize the classifier backbone and prediction head.
+        Args:
+            config : Configuration object containing encoder and classifier hyperparameters.
+        Raises:
+            ValueError : Raised when required model dimensions are invalid.
+        """
         super().__init__()
 
         embed_dim = int(getattr(config, "embed_dim", 0))
@@ -74,8 +85,14 @@ class ClassifierModel(nn.Module):
 
         self.apply(self._init_weights)
 
-    def _init_weights(self, module: nn.Module) -> None:
-        """Initialise module weights following transformer conventions."""
+    def _init_weights(self,
+                      module : nn.Module,
+                     ) -> None:
+        """
+        Initialize module weights following transformer conventions.
+        Args:
+            module : Module being initialized during `self.apply(...)`.
+        """
         if isinstance(module, nn.Linear):
             nn.init.trunc_normal_(module.weight, std = 0.02)
             if module.bias is not None:
@@ -88,7 +105,14 @@ class ClassifierModel(nn.Module):
                          inputs         : Tensor,
                          attention_mask : Optional[Tensor] = None,
                         ) -> Tensor:
-        """Produce pooled encoder features before the classification head."""
+        """
+        Produce pooled encoder features before the classification head.
+        Args:
+            inputs         : Tensor of shape (batch_size, seq_length) or projected feature inputs.
+            attention_mask : Optional boolean-compatible tensor of shape (batch_size, seq_length).
+        Returns:
+            Tensor of shape (batch_size, embed_dim) containing pooled sequence features.
+        """
         if self.token_embedding is not None:
             if inputs.dtype != torch.long:
                 inputs = inputs.long()
@@ -138,7 +162,14 @@ class ClassifierModel(nn.Module):
                 inputs         : Tensor,
                 attention_mask : Optional[Tensor] = None,
                ) -> Tensor:
-        """Execute the full classifier forward pass and return logits."""
+        """
+        Execute the full classifier forward pass.
+        Args:
+            inputs         : Tensor of shape (batch_size, seq_length) or projected feature inputs.
+            attention_mask : Optional boolean-compatible tensor of shape (batch_size, seq_length).
+        Returns:
+            Tensor of shape (batch_size, num_outputs) containing classifier logits.
+        """
         features = self.forward_features(inputs,
                                          attention_mask,
                                         )

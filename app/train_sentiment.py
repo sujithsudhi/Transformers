@@ -40,7 +40,13 @@ CONFIG_TARGET = "configs.imdb:IMDBConfig"
 
 
 def _build_training_config(training_cfg: Any) -> TrainingConfig:
-    """Build the trainer-core configuration from the app training section."""
+    """
+    Build the trainer-core configuration from the app training section.
+    Args:
+        training_cfg : Training config section from the application config.
+    Returns:
+        Trainer-core configuration object for the training loop.
+    """
     return load_training_config({"epochs"                     : training_cfg.epochs,
                                  "device"                     : training_cfg.device,
                                  "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
@@ -55,8 +61,17 @@ def _build_training_config(training_cfg: Any) -> TrainingConfig:
                                 })
 
 
-def _build_checkpoint_config(app_config: Any, model_config: Any) -> Dict[str, Any]:
-    """Build the checkpoint payload config while preserving optional sections."""
+def _build_checkpoint_config(app_config   : Any,
+                             model_config : Any,
+                            ) -> Dict[str, Any]:
+    """
+    Build the checkpoint config payload for serialization.
+    Args:
+        app_config   : Top-level application config object.
+        model_config : Resolved model config used to build the classifier.
+    Returns:
+        JSON-serializable checkpoint config dictionary.
+    """
     checkpoint_config = {"model"    : _to_serializable(model_config),
                          "training" : _to_serializable(app_config.training),
                          "data"     : _to_serializable(app_config.data),
@@ -69,6 +84,9 @@ def _build_checkpoint_config(app_config: Any, model_config: Any) -> Dict[str, An
 
 
 def main() -> None:
+    """
+    Train and evaluate the IMDB sentiment classifier from config.
+    """
     # Loading application config
     app_config = load_config_target(CONFIG_TARGET)
     if not hasattr(app_config, "data") or not hasattr(app_config, "model") or not hasattr(app_config, "training"):

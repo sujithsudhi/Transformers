@@ -16,15 +16,26 @@ except ImportError:  # wandb is optional; training should continue without it.
 from tool.utils import _to_serializable
 
 
-def build_optimizer(model: nn.Module,
-                    lr   : float,
-                    weight_decay: float,
+def build_optimizer(model        : nn.Module,
+                    lr           : float,
+                    weight_decay : float,
                     *,
-                    name: str = "adamw",
-                    betas: Optional[Sequence[float]] = None,
-                    eps: Optional[float] = None,
-                ) -> torch.optim.Optimizer:
-    """Build the configured optimizer for a model."""
+                    name         : str = "adamw",
+                    betas        : Optional[Sequence[float]] = None,
+                    eps          : Optional[float] = None,
+                   ) -> torch.optim.Optimizer:
+    """
+    Build the configured optimizer for a model.
+    Args:
+        model        : Model whose parameters will be optimized.
+        lr           : Learning rate for the optimizer.
+        weight_decay : Weight decay coefficient.
+        name         : Optimizer name from config.
+        betas        : Optional Adam beta coefficients.
+        eps          : Optional numerical stability term for AdamW.
+    Returns:
+        Configured torch optimizer instance.
+    """
     optimizer_name = name.strip().lower()
     if optimizer_name != "adamw":
         raise ValueError(f"Unsupported optimizer '{name}'. Only AdamW is currently implemented.")
@@ -43,12 +54,18 @@ def build_optimizer(model: nn.Module,
     return torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
 
 
-def build_loss(
-    *,
-    name: str = "bcewithlogits",
-    beta: float = 1.0,
-) -> nn.Module:
-    """Build a loss module from a config-friendly loss name."""
+def build_loss(*,
+               name : str = "bcewithlogits",
+               beta : float = 1.0,
+              ) -> nn.Module:
+    """
+    Build a loss module from a config-friendly loss name.
+    Args:
+        name : Loss name from config.
+        beta : Beta value used by SmoothL1 loss variants.
+    Returns:
+        Configured torch loss module.
+    """
     loss_name = name.strip().lower().replace("_", "").replace("-", "")
 
     if loss_name in {"bce", "bcewithlogits", "bcewithlogitsloss"}:
@@ -68,11 +85,22 @@ def build_loss(
 
 
 def build_cross_entropy_loss() -> nn.Module:
-    """Build the standard language-model cross-entropy loss."""
+    """
+    Build the standard language-model cross-entropy loss.
+    Returns:
+        Cross-entropy loss module for next-token prediction.
+    """
     return build_loss(name="crossentropyloss")
 
 
-def _resolve_wandb_bool_env(name: str) -> Optional[bool]:
+def _resolve_wandb_bool_env(name : str) -> Optional[bool]:
+    """
+    Resolve a boolean environment variable used by wandb configuration.
+    Args:
+        name : Environment variable name to inspect.
+    Returns:
+        Parsed boolean value, or `None` when the variable is unset.
+    """
     value = os.getenv(name)
     if value is None:
         return None
@@ -85,7 +113,19 @@ def _resolve_wandb_bool_env(name: str) -> Optional[bool]:
     return bool(lowered)
 
 
-def _resolve_wandb_value(env_name: str, config_value: Optional[str], default: Optional[str] = None) -> Optional[str]:
+def _resolve_wandb_value(env_name     : str,
+                         config_value : Optional[str],
+                         default      : Optional[str] = None,
+                        ) -> Optional[str]:
+    """
+    Resolve a wandb setting from environment, config, or default.
+    Args:
+        env_name     : Environment variable name to check first.
+        config_value : Config-provided fallback value.
+        default      : Default value used when both other sources are empty.
+    Returns:
+        Resolved string value or `None`.
+    """
     env_value = os.getenv(env_name)
     if env_value not in {None, ""}:
         return env_value
@@ -94,8 +134,15 @@ def _resolve_wandb_value(env_name: str, config_value: Optional[str], default: Op
     return default
 
 
-def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"], Optional[Callable[[Dict[str, Any]], None]]]:
-    """Initialise an optional Weights & Biases run and logger callback."""
+def init_wandb_run(app_config : Any,
+                  ) -> Tuple[Optional["wandb.sdk.wandb_run.Run"], Optional[Callable[[Dict[str, Any]], None]]]:
+    """
+    Initialize an optional Weights & Biases run and logger callback.
+    Args:
+        app_config : Top-level application config containing wandb settings.
+    Returns:
+        Tuple of `(wandb_run, logger_callback)` or `(None, None)` when logging is disabled.
+    """
     if wandb is None:
         print("wandb is not installed; skipping experiment logging.")
         return None, None
@@ -147,8 +194,15 @@ def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"]
     return run, logger
 
 
-def build_wandb_logger(run: Optional["wandb.sdk.wandb_run.Run"]) -> Callable[[Dict[str, Any]], None]:
-    """Build a trainer callback that logs train and validation metrics to wandb."""
+def build_wandb_logger(run : Optional["wandb.sdk.wandb_run.Run"],
+                      ) -> Callable[[Dict[str, Any]], None]:
+    """
+    Build a trainer callback that logs train and validation metrics to wandb.
+    Args:
+        run : Active wandb run, if one has been initialized.
+    Returns:
+        Callback that accepts trainer metric dictionaries.
+    """
     if wandb is None or run is None:
         def noop_logger(entry: Dict[str, Any]) -> None:
             return
@@ -167,8 +221,15 @@ def build_wandb_logger(run: Optional["wandb.sdk.wandb_run.Run"]) -> Callable[[Di
     return log_callback
 
 
-def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
-    """Write training history to JSON when an output path is configured."""
+def maybe_save_history(history : list[Dict[str, Any]],
+                       path    : Optional[Path],
+                      ) -> None:
+    """
+    Write training history to JSON when an output path is configured.
+    Args:
+        history : Trainer history entries to serialize.
+        path    : Output path for the JSON history file.
+    """
     if path is None:
         return
     resolved = path.expanduser().resolve()
@@ -178,8 +239,15 @@ def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
     print(f"Training history written to {resolved}")
 
 
-def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
-    """Render training curves when matplotlib and an output path are available."""
+def maybe_plot_history(history : list[Dict[str, Any]],
+                       path    : Optional[Path],
+                      ) -> None:
+    """
+    Render training curves when matplotlib and an output path are available.
+    Args:
+        history : Trainer history entries to visualize.
+        path    : Output path for the rendered plot image.
+    """
     if path is None or not history:
         return
     try:
@@ -325,9 +393,18 @@ def collect_classification_outputs(model: nn.Module,
                                    dataloader,
                                    device: torch.device,
                                    *,
-                                   non_blocking: bool = True,
+                                   non_blocking : bool = True,
                                   ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Collect logits, probabilities, and targets for a classification dataloader."""
+    """
+    Collect logits, probabilities, and targets for a classification dataloader.
+    Args:
+        model        : Classification model to evaluate.
+        dataloader   : Dataloader yielding classification batches.
+        device       : Device used for forward passes.
+        non_blocking : Whether tensor transfers should request non-blocking behavior.
+    Returns:
+        Tuple of `(logits, probabilities, targets)` tensors concatenated across the dataloader.
+    """
     def _move_to_device(obj: Any) -> Any:
         if isinstance(obj, torch.Tensor):
             return obj.to(device, non_blocking=non_blocking)
@@ -385,11 +462,17 @@ def collect_classification_outputs(model: nn.Module,
     return logits_tensor, probs_tensor, targets_tensor
 
 
-def prepare_classification_labels(
-    probabilities: torch.Tensor,
-    targets: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Convert probability outputs and targets into discrete label tensors."""
+def prepare_classification_labels(probabilities : torch.Tensor,
+                                  targets       : torch.Tensor,
+                                 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Convert probability outputs and targets into discrete label tensors.
+    Args:
+        probabilities : Tensor of shape (batch_size, num_outputs) or (batch_size, 1).
+        targets       : Tensor containing target labels.
+    Returns:
+        Tuple of `(preds, true)` label tensors flattened for metric computation.
+    """
     if probabilities.ndim == 2 and probabilities.shape[1] == 1:
         preds = (probabilities >= 0.5).long().view(-1)
     else:
@@ -401,8 +484,14 @@ def prepare_classification_labels(
     return preds, true
 
 
-def compute_class_distribution(labels: torch.Tensor) -> Dict[str, int]:
-    """Count examples per class label and return a JSON-friendly mapping."""
+def compute_class_distribution(labels : torch.Tensor) -> Dict[str, int]:
+    """
+    Count examples per class label and return a JSON-friendly mapping.
+    Args:
+        labels : Tensor containing class labels.
+    Returns:
+        Mapping from class label string to example count.
+    """
     flattened = labels.view(-1)
     unique, counts = torch.unique(flattened, return_counts=True)
     return {str(int(idx)): int(count) for idx, count in zip(unique, counts)}
