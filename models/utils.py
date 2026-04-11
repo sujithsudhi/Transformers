@@ -1,24 +1,32 @@
-from tqdm import tqdm
-import os
-import torch
+"""File readers that expose progress bars for large checkpoint loads."""
+
+from __future__ import annotations
+
 import io
+import os
+from typing import Any, BinaryIO, Optional
+
+from tqdm import tqdm
 
 
 class TqdmReader:
-    def __init__(self, f, total, desc="Loading"):
-        self.f = f
+    """Wrap a binary reader and track read progress with tqdm."""
+
+    def __init__(self, handle: BinaryIO, total: int, desc: str = "Loading") -> None:
+        self.handle = handle
         self.pbar = tqdm(total=total, unit="B", unit_scale=True, desc=desc)
         self._chunk_size = 8 * 1024 * 1024
 
-    def read(self, n=-1):
+    def read(self, n: int = -1) -> bytes:
         if n is None or n < 0:
             return self.readall()
         if n == 0:
             return b""
+
         remaining = n
-        chunks = []
+        chunks: list[bytes] = []
         while remaining > 0:
-            data = self.f.read(min(remaining, self._chunk_size))
+            data = self.handle.read(min(remaining, self._chunk_size))
             if not data:
                 break
             self.pbar.update(len(data))
@@ -26,37 +34,37 @@ class TqdmReader:
             remaining -= len(data)
         return b"".join(chunks)
 
-    def readinto(self, b):
-        n = self.f.readinto(b)
-        if n is None:
+    def readinto(self, buffer: Any) -> Optional[int]:
+        num_bytes = self.handle.readinto(buffer)
+        if num_bytes is None:
             return None
-        self.pbar.update(n)
-        return n
+        self.pbar.update(num_bytes)
+        return num_bytes
 
-    def readline(self, n=-1):
-        data = self.f.readline(n)
+    def readline(self, n: int = -1) -> bytes:
+        data = self.handle.readline(n)
         self.pbar.update(len(data))
         return data
 
-    def readall(self):
-        # Ensure progress advances even if torch.load uses readall.
-        chunks = []
+    def readall(self) -> bytes:
+        chunks: list[bytes] = []
         while True:
-            data = self.f.read(self._chunk_size)
+            data = self.handle.read(self._chunk_size)
             if not data:
                 break
             self.pbar.update(len(data))
             chunks.append(data)
         return b"".join(chunks)
 
-    def __getattr__(self, name):
-        return getattr(self.f, name)
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.handle, name)
 
 
 class ProgressFileObject(io.FileIO):
-    def __init__(self, path, *args, **kwargs):
+    """File object variant that reports incremental read progress."""
+
+    def __init__(self, path: str | os.PathLike[str], *args: Any, **kwargs: Any) -> None:
         self._total_size = os.path.getsize(path)
-        # Initialize tqdm with the total file size
         self._pbar = tqdm(
             total=self._total_size,
             unit="B",
@@ -68,13 +76,14 @@ class ProgressFileObject(io.FileIO):
         self._chunk_size = 8 * 1024 * 1024
         super().__init__(path, *args, **kwargs)
 
-    def read(self, size=-1):
+    def read(self, size: int = -1) -> bytes:
         if size is None or size < 0:
             return self.readall()
         if size == 0:
             return b""
+
         remaining = size
-        chunks = []
+        chunks: list[bytes] = []
         while remaining > 0:
             data = super().read(min(remaining, self._chunk_size))
             if not data:
@@ -84,21 +93,21 @@ class ProgressFileObject(io.FileIO):
             remaining -= len(data)
         return b"".join(chunks)
 
-    def readinto(self, b):
-        mv = memoryview(b)
+    def readinto(self, buffer: Any) -> int:
+        memory = memoryview(buffer)
         total = 0
-        while total < len(mv):
-            n = super().readinto(mv[total:])
-            if not n:
+
+        while total < len(memory):
+            num_bytes = super().readinto(memory[total:])
+            if not num_bytes:
                 break
-            total += n
-            self._pbar.update(n)
-        if total == 0:
-            return 0
+            total += num_bytes
+            self._pbar.update(num_bytes)
+
         return total
 
-    def readall(self):
-        chunks = []
+    def readall(self) -> bytes:
+        chunks: list[bytes] = []
         while True:
             data = super().read(self._chunk_size)
             if not data:
@@ -107,8 +116,7 @@ class ProgressFileObject(io.FileIO):
             chunks.append(data)
         return b"".join(chunks)
 
-    def close(self):
-        # Close the progress bar when the file is closed
-        if hasattr(self, '_pbar'):
+    def close(self) -> None:
+        if hasattr(self, "_pbar"):
             self._pbar.close()
         super().close()

@@ -9,18 +9,18 @@ from typing import Any, Dict, Optional
 import torch
 from torch import Tensor, nn
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
-from transformers import GPT2TokenizerFast
 
 # Ensure project root is importable when running as a script.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data.tinystory import DataPrep
+from data.tinystory import DataPrep as TinyStoriesDataPrep
 from transformer_core import PositionalEncoding, TransformerDecoderLayer
 from tool.utils import _to_serializable, load_config_target
-
 from training import (Trainer,
+                      TrainingConfig,
+                      build_cross_entropy_loss,
                       build_optimizer,
                       evaluate,
                       init_wandb_run,
@@ -28,21 +28,28 @@ from training import (Trainer,
                       maybe_plot_history,
                       maybe_save_history,
                      )
-from training.trainer_utils import build_cross_entropy_loss
+
+CONFIG_TARGET = "configs.tinystories:TinyStoriesConfig"
 
 
 class DecoderLanguageModel(nn.Module):
-    def __init__(self, config) -> None:
+    """Transformer decoder language model for TinyStories training and inference."""
+
+    def __init__(self, config: Any) -> None:
         super().__init__()
 
-        if config.vocab_size is None or config.vocab_size <= 0:
+        if config.vocab_size is None or int(config.vocab_size) <= 0:
             raise ValueError("vocab_size must be set for language modeling.")
+        if int(getattr(config, "embed_dim", 0)) <= 0:
+            raise ValueError("embed_dim must be a positive integer.")
+        if int(getattr(config, "depth", 0)) <= 0:
+            raise ValueError("depth must be a positive integer.")
 
         self.config = config
         self.use_rope = bool(getattr(config, "use_rope", True))
         self.token_embedding = nn.Embedding(config.vocab_size,
                                             config.embed_dim,
-                                            padding_idx=0)
+                                            padding_idx = 0)
 
         self.position: Optional[PositionalEncoding] = None
         if not self.use_rope:
@@ -55,44 +62,51 @@ class DecoderLanguageModel(nn.Module):
                                     for _ in range(config.depth)
                                     )
         self.norm = nn.LayerNorm(config.embed_dim)
-        self.lm_head = nn.Linear(config.embed_dim, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.embed_dim, config.vocab_size, bias = False)
 
         self.apply(self._init_weights)
 
     def _init_weights(self, module: nn.Module) -> None:
+        """Initialise module weights following transformer decoder conventions."""
         if isinstance(module, nn.Linear):
-            nn.init.trunc_normal_(module.weight, std=0.02)
+            nn.init.trunc_normal_(module.weight, std = 0.02)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         elif isinstance(module, nn.LayerNorm):
             nn.init.ones_(module.weight)
             nn.init.zeros_(module.bias)
 
-    def forward(
-        self,
-        inputs: Tensor,
-        attention_mask: Optional[Tensor] = None,
-        past_kvs: Optional[list[tuple[Tensor, Tensor]]] = None,
-        use_cache: bool = False,
-    ) -> Tensor | tuple[Tensor, list[tuple[Tensor, Tensor]]]:
+    def forward(self,
+                inputs         : Tensor,
+                attention_mask : Optional[Tensor] = None,
+                past_kvs       : Optional[list[tuple[Tensor, Tensor]]] = None,
+                use_cache      : bool = False,
+               ) -> Tensor | tuple[Tensor, list[tuple[Tensor, Tensor]]]:
+        """Run the decoder and optionally return cache tensors for generation."""
         if inputs.dtype != torch.long:
             inputs = inputs.long()
 
         x = self.token_embedding(inputs)
         if self.position is not None:
             position_offset = 0
-            if past_kvs is not None and past_kvs:
+            if past_kvs:
                 position_offset = past_kvs[0][0].size(2)
-            x = self.position(x, offset=position_offset)
+            x = self.position(x, offset = position_offset)
 
         presents: list[tuple[Tensor, Tensor]] = []
         for idx, layer in enumerate(self.decoder):
-            past_kv = past_kvs[idx] if past_kvs is not None else None
+            past_kv = None
+            if past_kvs is not None and idx < len(past_kvs):
+                past_kv = past_kvs[idx]
+
             if use_cache:
-                x, present = layer(x, mask=attention_mask, past_kv=past_kv, use_cache=True)
+                x, present = layer(x,
+                                   mask      = attention_mask,
+                                   past_kv   = past_kv,
+                                   use_cache = True)
                 presents.append(present)
             else:
-                x = layer(x, mask=attention_mask)
+                x = layer(x, mask = attention_mask)
 
         x = self.norm(x)
         logits = self.lm_head(x)
@@ -101,16 +115,51 @@ class DecoderLanguageModel(nn.Module):
         return logits
 
 
+def _build_training_config(training_cfg: Any) -> TrainingConfig:
+    """Build the trainer-core configuration from the app training section."""
+    return load_training_config({"epochs"                     : training_cfg.epochs,
+                                 "device"                     : training_cfg.device,
+                                 "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
+                                 "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
+                                 "use_amp"                    : training_cfg.use_amp,
+                                 "amp_dtype"                  : training_cfg.amp_dtype,
+                                 "log_interval"               : training_cfg.log_interval,
+                                 "non_blocking"               : training_cfg.non_blocking,
+                                 "early_stopping_patience"    : training_cfg.early_stopping_patience,
+                                 "lr_reduction_patience"      : training_cfg.lr_reduction_patience,
+                                 "lr_reduction_factor"        : training_cfg.lr_reduction_factor,
+                                 "warmup_epochs"              : training_cfg.warmup_epochs,
+                                 "warmup_start_factor"        : training_cfg.warmup_start_factor,
+                                 "use_cosine_decay"           : training_cfg.use_cosine_decay,
+                                 "min_lr"                     : training_cfg.min_lr,
+                                })
+
+
+def _build_checkpoint_config(app_config: Any, model_config: Any) -> Dict[str, Any]:
+    """Build the checkpoint payload config while preserving optional sections."""
+    checkpoint_config = {"model"    : _to_serializable(model_config),
+                         "training" : _to_serializable(app_config.training),
+                         "data"     : _to_serializable(app_config.data),
+                        }
+    for section_name in ("dataloader", "optimizer", "loss"):
+        section_value = getattr(app_config, section_name, None)
+        if section_value is not None:
+            checkpoint_config[section_name] = _to_serializable(section_value)
+    return checkpoint_config
+
+
 def main() -> None:
     # Loading application config
-    app_config = load_config_target("configs.tinystories:TinyStoriesConfig")
-    torch.manual_seed(int(getattr(app_config.training, "seed", 42)))
-
-    wandb_run, wandb_logger = init_wandb_run(app_config)
-
-    if not hasattr(app_config, "data") or not hasattr(app_config, "model"):
+    app_config = load_config_target(CONFIG_TARGET)
+    if not hasattr(app_config, "data") or not hasattr(app_config, "model") or not hasattr(app_config, "training"):
         raise TypeError("Configuration object must expose 'data', 'model', and 'training'.")
 
+    # Seed and runtime setup
+    training_cfg = app_config.training
+    torch.manual_seed(int(getattr(training_cfg, "seed", 42)))
+    wandb_run, wandb_logger = init_wandb_run(app_config)
+
+    # Preparing data for training
     data_cfg = app_config.data
     dataloader_cfg = getattr(app_config, "dataloader", None)
 
@@ -119,22 +168,21 @@ def main() -> None:
         dataset_name = "roneneldan/TinyStories"
 
     tokenizer_name = getattr(app_config, "tokenizer_name", "gpt2")
+    batch_size = getattr(dataloader_cfg, "batch_size", 32)
 
-    # Prepering data for training
-    data_prep = DataPrep(dataset         = dataset_name,
-                         block_size      = data_cfg.max_tokens,
-                         batch_size      = getattr(dataloader_cfg, "batch_size", 32),
-                         shuffle         = True,
-                         num_workers     = getattr(dataloader_cfg, "num_workers", 0),
-                         pin_memory      = getattr(dataloader_cfg, "pin_memory", True),
-                         cache_dir       = str(getattr(data_cfg, "cache_dir", "data/cache")),
-                         tokenizer_name  = tokenizer_name,
-                         stride          = getattr(data_cfg, "stride", None),
-                         use_map         = getattr(data_cfg, "use_map", False),
-                         map_num_proc    = getattr(data_cfg, "map_num_proc", 8),
-                         map_batch_size  = getattr(data_cfg, "map_batch_size", 1000),
-                        )
-
+    data_prep = TinyStoriesDataPrep(dataset        = dataset_name,
+                                    block_size     = data_cfg.max_tokens,
+                                    batch_size     = batch_size,
+                                    shuffle        = True,
+                                    num_workers    = getattr(dataloader_cfg, "num_workers", 0),
+                                    pin_memory     = getattr(dataloader_cfg, "pin_memory", True),
+                                    cache_dir      = str(getattr(data_cfg, "cache_dir", "data/cache")),
+                                    tokenizer_name = tokenizer_name,
+                                    stride         = getattr(data_cfg, "stride", None),
+                                    use_map        = getattr(data_cfg, "use_map", False),
+                                    map_num_proc   = getattr(data_cfg, "map_num_proc", 8),
+                                    map_batch_size = getattr(data_cfg, "map_batch_size", 1000),
+                                   )
     train_loader, val_loader, tokenizer = data_prep.prep()
     vocab_size = tokenizer.vocab_size
 
@@ -142,67 +190,45 @@ def main() -> None:
     val_batches = len(val_loader)
     train_examples = len(train_loader.dataset)
     val_examples = len(val_loader.dataset)
-    batch_size = getattr(dataloader_cfg, "batch_size", 32)
-    loader_stats: Dict[str, Any] = {
-        "train_examples": train_examples,
-        "val_examples": val_examples,
-        "train_batches_per_epoch": train_batches,
-        "val_batches_per_epoch": val_batches,
-        "tokens_per_batch": batch_size * data_cfg.max_tokens,
-    }
-    print(
-        "TinyStories runtime: "
-        + json.dumps(
-            {
-                "batch_size": batch_size,
-                "num_workers": getattr(dataloader_cfg, "num_workers", 0),
-                **loader_stats,
-            }
-        )
-    )
+    loader_stats: Dict[str, Any] = {"train_examples"         : train_examples,
+                                    "val_examples"           : val_examples,
+                                    "train_batches_per_epoch": train_batches,
+                                    "val_batches_per_epoch"  : val_batches,
+                                    "tokens_per_batch"       : batch_size * data_cfg.max_tokens,
+                                   }
+    print("TinyStories runtime: "
+          + json.dumps({"batch_size"  : batch_size,
+                        "num_workers" : getattr(dataloader_cfg, "num_workers", 0),
+                        **loader_stats,
+                       }))
     if wandb_run is not None:
         try:
-            wandb_run.config.update({"runtime": loader_stats}, allow_val_change=True)
+            wandb_run.config.update({"runtime": loader_stats}, allow_val_change = True)
         except Exception:
             pass
 
+    # Building model, optimizer, scheduler, and loss
     model_config = replace(app_config.model,
-                           vocab_size=vocab_size,
-                           max_length=data_cfg.max_tokens)
+                           vocab_size = vocab_size,
+                           max_length = data_cfg.max_tokens)
     model = DecoderLanguageModel(model_config)
 
-    training_cfg  = app_config.training
     optimizer_cfg = getattr(app_config, "optimizer", None)
-    
     optimizer = build_optimizer(model,
-                                lr=getattr(optimizer_cfg, "lr", training_cfg.lr),
-                                weight_decay=getattr(optimizer_cfg, "weight_decay", training_cfg.weight_decay),
-                                name=getattr(optimizer_cfg, "name", "adamw"),
-                                betas=getattr(optimizer_cfg, "betas", None),
-                                eps=getattr(optimizer_cfg, "eps", None))
-    
-    ce_loss = build_cross_entropy_loss()
+                                lr           = getattr(optimizer_cfg, "lr", training_cfg.lr),
+                                weight_decay = getattr(optimizer_cfg, "weight_decay", training_cfg.weight_decay),
+                                name         = getattr(optimizer_cfg, "name", "adamw"),
+                                betas        = getattr(optimizer_cfg, "betas", None),
+                                eps          = getattr(optimizer_cfg, "eps", None),
+                               )
+
+    criterion = build_cross_entropy_loss()
 
     def loss_fn(logits: Tensor, targets: Tensor) -> Tensor:
         vocab = logits.size(-1)
-        return ce_loss(logits.view(-1, vocab), targets.view(-1))
+        return criterion(logits.view(-1, vocab), targets.view(-1))
 
-    training_config = load_training_config({"epochs"                     : training_cfg.epochs,
-                                            "device"                     : training_cfg.device,
-                                            "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
-                                            "gradient_accumulation_steps": training_cfg.gradient_accumulation_steps,
-                                            "use_amp"                 : training_cfg.use_amp,
-                                            "amp_dtype"               : training_cfg.amp_dtype,
-                                            "log_interval"            : training_cfg.log_interval,
-                                            "non_blocking"            : training_cfg.non_blocking,
-                                            "early_stopping_patience" : training_cfg.early_stopping_patience,
-                                            "lr_reduction_patience"   : training_cfg.lr_reduction_patience,
-                                            "lr_reduction_factor"     : training_cfg.lr_reduction_factor,
-                                            "warmup_epochs"           : training_cfg.warmup_epochs,
-                                            "warmup_start_factor"     : training_cfg.warmup_start_factor,
-                                            "use_cosine_decay"        : training_cfg.use_cosine_decay,
-                                            "min_lr"                  : training_cfg.min_lr,
-                                          })
+    training_config = _build_training_config(training_cfg)
 
     scheduler = None
     if training_cfg.use_cosine_decay or training_cfg.warmup_epochs > 0:
@@ -212,83 +238,66 @@ def main() -> None:
         cosine_epochs = max(1, total_epochs - warmup_epochs)
 
         if warmup_epochs > 0:
-            warmup = LinearLR(
-                optimizer,
-                start_factor=float(training_cfg.warmup_start_factor),
-                total_iters=warmup_epochs,
-            )
-            cosine = CosineAnnealingLR(
-                optimizer,
-                T_max=cosine_epochs,
-                eta_min=float(training_cfg.min_lr),
-            )
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[warmup, cosine],
-                milestones=[warmup_epochs],
-            )
+            warmup = LinearLR(optimizer,
+                              start_factor = float(training_cfg.warmup_start_factor),
+                              total_iters  = warmup_epochs)
+            cosine = CosineAnnealingLR(optimizer,
+                                       T_max   = cosine_epochs,
+                                       eta_min = float(training_cfg.min_lr))
+            scheduler = SequentialLR(optimizer,
+                                     schedulers = [warmup, cosine],
+                                     milestones = [warmup_epochs],
+                                    )
         else:
-            scheduler = CosineAnnealingLR(
-                optimizer,
-                T_max=cosine_epochs,
-                eta_min=float(training_cfg.min_lr),
-            )
+            scheduler = CosineAnnealingLR(optimizer,
+                                          T_max   = cosine_epochs,
+                                          eta_min = float(training_cfg.min_lr))
 
+    # Training
     checkpoint_path = Path(getattr(app_config, "checkpoint_path", Path("results/tiny_stories_transformer.pt")))
     checkpoint_path = checkpoint_path.expanduser().resolve()
-    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.parent.mkdir(parents = True, exist_ok = True)
 
-    trainer = Trainer(model        = model,
-                      optimizer    = optimizer,
-                      loss_fn      = loss_fn,
-                      train_loader = train_loader,
-                      config       = training_config,
-                      val_loader   = val_loader,
-                      scheduler    = scheduler,
-                      logger       = wandb_logger,
+    trainer = Trainer(model               = model,
+                      optimizer           = optimizer,
+                      loss_fn             = loss_fn,
+                      train_loader        = train_loader,
+                      config              = training_config,
+                      val_loader          = val_loader,
+                      scheduler           = scheduler,
+                      logger              = wandb_logger,
                       best_checkpoint_dir = checkpoint_path.parent,
                      )
-    
     history = trainer.fit()
 
+    # Evaluation
     test_metrics = evaluate(trainer.model,
                             val_loader,
                             loss_fn,
                             torch.device(training_config.device),
                             training_config.non_blocking,
-                            progress_desc="Validation",
+                            progress_desc = "Validation",
                            )
 
-    history_path    = getattr(app_config, "history_path", None)
-    plot_path       = getattr(app_config, "plot_path", None)
-
+    # Saving history and checkpoint
+    history_path = getattr(app_config, "history_path", None)
+    plot_path = getattr(app_config, "plot_path", None)
     maybe_save_history(history, history_path)
     maybe_plot_history(history, plot_path)
 
     best_state = trainer.best_model_state_dict()
-    checkpoint_config = {
-        "model": _to_serializable(model_config),
-        "training": _to_serializable(app_config.training),
-        "data": _to_serializable(app_config.data),
-    }
-    for section_name in ("dataloader", "optimizer", "loss"):
-        section_value = getattr(app_config, section_name, None)
-        if section_value is not None:
-            checkpoint_config[section_name] = _to_serializable(section_value)
-    torch.save(
-        {
-            "model_state_dict": best_state,
-            "config": checkpoint_config,
-        },
-        checkpoint_path,
-    )
+    checkpoint_config = _build_checkpoint_config(app_config, model_config)
+    torch.save({"model_state_dict": best_state,
+                "config"          : checkpoint_config,
+               },
+               checkpoint_path)
 
-    summary: Dict[str, Any] = {
-        "train_history": history,
-        "val_metrics": test_metrics,
-        "checkpoint_path": checkpoint_path.as_posix(),
-    }
-    print(json.dumps(summary, indent=2))
+    # Final summary and shutdown
+    summary: Dict[str, Any] = {"train_history"   : history,
+                               "val_metrics"     : test_metrics,
+                               "checkpoint_path" : checkpoint_path.as_posix(),
+                              }
+    print(json.dumps(summary, indent = 2))
 
     if wandb_run is not None:
         wandb_run.finish()

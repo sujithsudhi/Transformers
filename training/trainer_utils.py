@@ -24,7 +24,7 @@ def build_optimizer(model: nn.Module,
                     betas: Optional[Sequence[float]] = None,
                     eps: Optional[float] = None,
                 ) -> torch.optim.Optimizer:
-    
+    """Build the configured optimizer for a model."""
     optimizer_name = name.strip().lower()
     if optimizer_name != "adamw":
         raise ValueError(f"Unsupported optimizer '{name}'. Only AdamW is currently implemented.")
@@ -43,11 +43,34 @@ def build_optimizer(model: nn.Module,
     return torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
 
 
-def build_loss() -> nn.Module:
-    return nn.BCEWithLogitsLoss()
+def build_loss(
+    *,
+    name: str = "bcewithlogits",
+    beta: float = 1.0,
+) -> nn.Module:
+    """Build a loss module from a config-friendly loss name."""
+    loss_name = name.strip().lower().replace("_", "").replace("-", "")
+
+    if loss_name in {"bce", "bcewithlogits", "bcewithlogitsloss"}:
+        return nn.BCEWithLogitsLoss()
+    if loss_name in {"crossentropy", "crossentropyloss"}:
+        return nn.CrossEntropyLoss()
+    if loss_name in {"mse", "mseloss"}:
+        return nn.MSELoss()
+    if loss_name in {"smoothl1", "smoothl1loss", "huber", "huberloss"}:
+        if beta <= 0:
+            raise ValueError("beta must be > 0 for SmoothL1Loss.")
+        return nn.SmoothL1Loss(beta=float(beta))
+
+    raise ValueError(
+        f"Unsupported loss '{name}'. Supported losses are BCEWithLogits, CrossEntropy, MSE, and SmoothL1."
+    )
+
 
 def build_cross_entropy_loss() -> nn.Module:
-    return nn.CrossEntropyLoss()
+    """Build the standard language-model cross-entropy loss."""
+    return build_loss(name="crossentropyloss")
+
 
 def _resolve_wandb_bool_env(name: str) -> Optional[bool]:
     value = os.getenv(name)
@@ -72,6 +95,7 @@ def _resolve_wandb_value(env_name: str, config_value: Optional[str], default: Op
 
 
 def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"], Optional[Callable[[Dict[str, Any]], None]]]:
+    """Initialise an optional Weights & Biases run and logger callback."""
     if wandb is None:
         print("wandb is not installed; skipping experiment logging.")
         return None, None
@@ -124,6 +148,7 @@ def init_wandb_run(app_config: Any) -> Tuple[Optional["wandb.sdk.wandb_run.Run"]
 
 
 def build_wandb_logger(run: Optional["wandb.sdk.wandb_run.Run"]) -> Callable[[Dict[str, Any]], None]:
+    """Build a trainer callback that logs train and validation metrics to wandb."""
     if wandb is None or run is None:
         def noop_logger(entry: Dict[str, Any]) -> None:
             return
@@ -143,6 +168,7 @@ def build_wandb_logger(run: Optional["wandb.sdk.wandb_run.Run"]) -> Callable[[Di
 
 
 def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
+    """Write training history to JSON when an output path is configured."""
     if path is None:
         return
     resolved = path.expanduser().resolve()
@@ -153,6 +179,7 @@ def maybe_save_history(history: list[Dict[str, Any]], path: Optional[Path]) -> N
 
 
 def maybe_plot_history(history: list[Dict[str, Any]], path: Optional[Path]) -> None:
+    """Render training curves when matplotlib and an output path are available."""
     if path is None or not history:
         return
     try:
@@ -300,7 +327,7 @@ def collect_classification_outputs(model: nn.Module,
                                    *,
                                    non_blocking: bool = True,
                                   ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    
+    """Collect logits, probabilities, and targets for a classification dataloader."""
     def _move_to_device(obj: Any) -> Any:
         if isinstance(obj, torch.Tensor):
             return obj.to(device, non_blocking=non_blocking)
@@ -362,6 +389,7 @@ def prepare_classification_labels(
     probabilities: torch.Tensor,
     targets: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Convert probability outputs and targets into discrete label tensors."""
     if probabilities.ndim == 2 and probabilities.shape[1] == 1:
         preds = (probabilities >= 0.5).long().view(-1)
     else:
@@ -374,6 +402,7 @@ def prepare_classification_labels(
 
 
 def compute_class_distribution(labels: torch.Tensor) -> Dict[str, int]:
+    """Count examples per class label and return a JSON-friendly mapping."""
     flattened = labels.view(-1)
     unique, counts = torch.unique(flattened, return_counts=True)
     return {str(int(idx)): int(count) for idx, count in zip(unique, counts)}
@@ -382,6 +411,7 @@ def compute_class_distribution(labels: torch.Tensor) -> Dict[str, int]:
 __all__ = [
     "build_optimizer",
     "build_loss",
+    "build_cross_entropy_loss",
     "init_wandb_run",
     "build_wandb_logger",
     "maybe_save_history",
