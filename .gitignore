@@ -1,4 +1,6 @@
 .vscode/
+.claude/
+.claude/
 .venv/
 .env
 __pycache__/

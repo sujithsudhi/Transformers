@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python -c \"import trainer_core; import inspect; print\\(inspect.getfile\\(trainer_core\\)\\)\")",
-      "Bash(pip show:*)"
-    ]
-  }
-}
