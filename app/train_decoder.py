@@ -15,7 +15,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data.tinystory import DataPrep
 from transformer_core import PositionalEncoding, TransformerDecoderLayer
 from tool.utils import _to_serializable, load_config_target
 
@@ -143,6 +142,8 @@ def main() -> None:
     """
     Train and evaluate the TinyStories decoder model from config.
     """
+    from data.tinystory import DataPrep
+
     # Loading application config
     app_config = load_config_target("configs.tinystories:TinyStoriesConfig")
     torch.manual_seed(int(getattr(app_config.training, "seed", 42)))
@@ -156,8 +157,6 @@ def main() -> None:
     dataloader_cfg = getattr(app_config, "dataloader", None)
 
     dataset_name = getattr(data_cfg, "dataset_name", None) or "roneneldan/TinyStories"
-    if "/" not in dataset_name:
-        dataset_name = "roneneldan/TinyStories"
 
     tokenizer_name = getattr(app_config, "tokenizer_name", "gpt2")
 
@@ -173,7 +172,9 @@ def main() -> None:
                          stride         = getattr(data_cfg, "stride", None),
                          use_map        = getattr(data_cfg, "use_map", False),
                          map_num_proc   = getattr(data_cfg, "map_num_proc", 8),
-                         map_batch_size = getattr(data_cfg, "map_batch_size", 1000))
+                         map_batch_size = getattr(data_cfg, "map_batch_size", 1000),
+                         data_path      = getattr(data_cfg, "data_path", None),
+                         dataset_root   = getattr(data_cfg, "dataset_root", None))
 
     train_loader, val_loader, tokenizer = data_prep.prep()
     vocab_size = tokenizer.vocab_size
@@ -233,6 +234,12 @@ def main() -> None:
         vocab = logits.size(-1)
         return ce_loss(logits.view(-1, vocab), targets.view(-1))
 
+    use_epoch_scheduler = bool(training_cfg.use_cosine_decay or training_cfg.warmup_epochs > 0)
+    lr_reduction_patience = training_cfg.lr_reduction_patience
+    if use_epoch_scheduler and lr_reduction_patience is not None:
+        print("TinyStories training: disabling trainer-core lr_reduction_patience because cosine/warmup scheduling is active.")
+        lr_reduction_patience = None
+
     training_config = load_training_config({"epochs"                     : training_cfg.epochs,
                                             "device"                     : training_cfg.device,
                                             "gradient_clip_norm"         : training_cfg.gradient_clip_norm,
@@ -242,7 +249,7 @@ def main() -> None:
                                             "log_interval"               : training_cfg.log_interval,
                                             "non_blocking"               : training_cfg.non_blocking,
                                             "early_stopping_patience"    : training_cfg.early_stopping_patience,
-                                            "lr_reduction_patience"      : training_cfg.lr_reduction_patience,
+                                            "lr_reduction_patience"      : lr_reduction_patience,
                                             "lr_reduction_factor"        : training_cfg.lr_reduction_factor,
                                             "warmup_epochs"              : training_cfg.warmup_epochs,
                                             "warmup_start_factor"        : training_cfg.warmup_start_factor,
@@ -251,7 +258,7 @@ def main() -> None:
                                           })
 
     scheduler = None
-    if training_cfg.use_cosine_decay or training_cfg.warmup_epochs > 0:
+    if use_epoch_scheduler:
         total_epochs  = max(1, int(training_cfg.epochs))
         warmup_epochs = max(0, int(training_cfg.warmup_epochs))
         warmup_epochs = min(warmup_epochs, max(0, total_epochs - 1))

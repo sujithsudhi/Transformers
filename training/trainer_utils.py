@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,28 @@ except ImportError:  # wandb is optional; training should continue without it.
     wandb = None
 
 from tool.utils import _to_serializable
+
+
+def _load_trainer_core_optimizer(module_name : str,
+                                 class_name  : str,
+                                ) -> Optional[type[torch.optim.Optimizer]]:
+    """
+    Try to load an optional optimizer class from trainer-core.
+    Args:
+        module_name : Fully qualified module path inside trainer-core.
+        class_name  : Optimizer class name expected in that module.
+    Returns:
+        Optimizer class when available, otherwise `None`.
+    """
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        return None
+
+    optimizer_cls = getattr(module, class_name, None)
+    if optimizer_cls is None:
+        return None
+    return optimizer_cls
 
 
 def build_optimizer(model        : nn.Module,
@@ -37,11 +60,9 @@ def build_optimizer(model        : nn.Module,
         Configured torch optimizer instance.
     """
     optimizer_name = name.strip().lower()
-    if optimizer_name != "adamw":
-        raise ValueError(f"Unsupported optimizer '{name}'. Only AdamW is currently implemented.")
 
     optimizer_kwargs: Dict[str, Any] = {
-        "lr": float(lr),
+        "lr"          : float(lr),
         "weight_decay": float(weight_decay),
     }
     if betas is not None:
@@ -51,7 +72,48 @@ def build_optimizer(model        : nn.Module,
     if eps is not None:
         optimizer_kwargs["eps"] = float(eps)
 
-    return torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
+    if optimizer_name == "adamw":
+        return torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
+
+    if optimizer_name == "adam":
+        optimizer_cls = _load_trainer_core_optimizer("trainer_core.optimizers.adam", "customAdam")
+        if optimizer_cls is not None:
+            return optimizer_cls(model.parameters(), **optimizer_kwargs)
+        return torch.optim.Adam(model.parameters(), **optimizer_kwargs)
+
+    if optimizer_name == "lion":
+        optimizer_cls = _load_trainer_core_optimizer("trainer_core.optimizers.lion", "customLion")
+        if optimizer_cls is None:
+            raise ValueError(
+                "Unsupported optimizer 'lion'. trainer-core does not expose customLion in this environment."
+            )
+        lion_kwargs = {"lr"          : float(lr),
+                       "weight_decay": float(weight_decay)}
+        if betas is not None:
+            lion_kwargs["betas"] = (float(betas[0]), float(betas[1]))
+        return optimizer_cls(model.parameters(), **lion_kwargs)
+
+    if optimizer_name == "sgd":
+        optimizer_cls = _load_trainer_core_optimizer("trainer_core.optimizers.sgd", "customSGD")
+        sgd_kwargs = {"lr"          : float(lr),
+                      "weight_decay": float(weight_decay)}
+        if optimizer_cls is not None:
+            return optimizer_cls(model.parameters(), **sgd_kwargs)
+        return torch.optim.SGD(model.parameters(), **sgd_kwargs)
+
+    if optimizer_name == "rmsprop":
+        optimizer_cls = _load_trainer_core_optimizer("trainer_core.optimizers.rmsprop", "customRMSprop")
+        rmsprop_kwargs = {"lr"          : float(lr),
+                          "weight_decay": float(weight_decay)}
+        if eps is not None:
+            rmsprop_kwargs["eps"] = float(eps)
+        if optimizer_cls is not None:
+            return optimizer_cls(model.parameters(), **rmsprop_kwargs)
+        return torch.optim.RMSprop(model.parameters(), **rmsprop_kwargs)
+
+    raise ValueError(
+        f"Unsupported optimizer '{name}'. Supported optimizers are AdamW, Adam, Lion, SGD, and RMSprop."
+    )
 
 
 def build_loss(*,

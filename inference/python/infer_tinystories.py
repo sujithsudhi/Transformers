@@ -191,8 +191,6 @@ def main() -> None:
     dataloader_cfg = getattr(app_config, "dataloader", None)
 
     dataset_name = getattr(data_cfg, "dataset_name", None) or "roneneldan/TinyStories"
-    if "/" not in dataset_name:
-        dataset_name = "roneneldan/TinyStories"
 
     tokenizer_name = getattr(app_config, "tokenizer_name", "gpt2")
     tokenizer = GPT2TokenizerFast.from_pretrained(tokenizer_name)
@@ -233,6 +231,8 @@ def main() -> None:
                                         cache_dir=str(getattr(data_cfg, "cache_dir", "data/cache/tinystories")),
                                         tokenizer_name=tokenizer_name,
                                         stride=getattr(data_cfg, "stride", None),
+                                        data_path=getattr(data_cfg, "data_path", None),
+                                        dataset_root=getattr(data_cfg, "dataset_root", None),
                                        )
         cache_path = data_prep._cache_path(args.split, tokenizer_name)
         if cache_path is None or not cache_path.exists():

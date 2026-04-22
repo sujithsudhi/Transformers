@@ -20,7 +20,7 @@ from .transformers import TransformersModelConfig
 class TinyStoriesDataConfig(BaseDataConfig):
     """Dataset and preprocessing parameters for TinyStories."""
 
-    data_path      : Path          = Path("D:\\Datasets\\Basics\\TinyStories")
+    data_path      : Path          = Path(r"D:\Datasets\Basics\TinyStories")
     cache_dir      : Path          = Path("data/cache/tinystories")
     max_tokens     : int           = 512
     dataset_name   : str           = "roneneldan/TinyStories"
@@ -59,7 +59,7 @@ class TinyStoriesTrainingConfig(BaseTrainingConfig):
     use_amp                 : str | bool = True
     amp_dtype               : str        = "fp16"
     early_stopping_patience : int | None = 10
-    lr_reduction_patience   : int | None = 5
+    lr_reduction_patience   : int | None = None
     warmup_epochs           : int        = 5
     warmup_start_factor     : float      = 0.1
     use_cosine_decay        : bool       = True

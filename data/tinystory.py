@@ -7,14 +7,38 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import torch
-from datasets import load_dataset
+from datasets import DatasetDict, load_dataset, load_from_disk
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
 from transformers import GPT2TokenizerFast
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, *args, **kwargs):
+        """
+        Return the input iterable unchanged when tqdm is unavailable.
+        Args:
+            iterable : Iterable that would otherwise be wrapped by tqdm.
+            *args    : Unused positional tqdm arguments kept for compatibility.
+            **kwargs : Unused keyword tqdm arguments kept for compatibility.
+        Returns:
+            The original iterable without a progress bar wrapper.
+        """
+        del args, kwargs
+        return iterable
 
 logger = logging.getLogger(__name__)
 
 _TOKENIZER_CACHE: dict[str, GPT2TokenizerFast] = {}
+_LOCAL_FILE_BUILDERS = {".txt"    : "text",
+                        ".text"   : "text",
+                        ".json"   : "json",
+                        ".jsonl"  : "json",
+                        ".parquet": "parquet",
+                       }
+_LOCAL_SPLIT_ALIASES = {"train"     : ("train",),
+                        "validation": ("validation", "valid", "val"),
+                       }
 
 
 def _get_tokenizer(tokenizer_name: str) -> GPT2TokenizerFast:
@@ -49,11 +73,173 @@ def _tokenize_batch_texts(batch: dict[str, list[str]], tokenizer_name: str) -> d
 class DataRead:
     """Load TinyStories splits from Hugging Face datasets."""
 
-    def __init__(self, dataset: Optional[str] = "roneneldan/TinyStories") -> None:
+    def __init__(self,
+                 dataset      : Optional[str] = "roneneldan/TinyStories",
+                 data_path    : Path | str | None = None,
+                 dataset_root : Path | str | None = None,
+                ) -> None:
         self.dataset = dataset or "roneneldan/TinyStories"
+        self.data_path = Path(data_path).expanduser() if data_path else None
+        self.dataset_root = Path(dataset_root).expanduser() if dataset_root else None
+        self.source_id = self.dataset
+
+    def _candidate_local_paths(self) -> list[Path]:
+        """
+        Collect unique local paths that may contain TinyStories data.
+        Returns:
+            Ordered list of existing local dataset candidates.
+        """
+        candidates: list[Path] = []
+        for raw_candidate in (self.data_path, self.dataset_root):
+            if raw_candidate is None or not raw_candidate.exists():
+                continue
+            resolved = raw_candidate.resolve()
+            if resolved not in candidates:
+                candidates.append(resolved)
+
+        dataset_path = Path(self.dataset).expanduser()
+        if dataset_path.exists():
+            resolved = dataset_path.resolve()
+            if resolved not in candidates:
+                candidates.append(resolved)
+        return candidates
+
+    def _is_saved_dataset_path(self,
+                               path : Path,
+                              ) -> bool:
+        """
+        Check whether a path looks like a Hugging Face dataset saved to disk.
+        Args:
+            path : Candidate local dataset directory.
+        Returns:
+            True when the directory exposes dataset save markers.
+        """
+        if not path.is_dir():
+            return False
+
+        marker_paths = (path / "dataset_dict.json",
+                        path / "state.json")
+        return any(marker.exists() for marker in marker_paths)
+
+    def resolve_source_id(self) -> str:
+        """
+        Resolve the cache/source identifier for the active TinyStories data source.
+        Returns:
+            Stable source identifier used for token-cache names.
+        """
+        for path in self._candidate_local_paths():
+            if self._is_saved_dataset_path(path) or self._resolve_local_data_files(path) is not None:
+                return path.as_posix()
+        return self.dataset
+
+    def _load_saved_dataset(self,
+                            path : Path,
+                           ) -> Optional[DatasetDict]:
+        """
+        Load a previously saved Hugging Face dataset from disk.
+        Args:
+            path : Candidate local dataset directory.
+        Returns:
+            DatasetDict with train/validation splits, or `None` when unsupported.
+        """
+        if not path.is_dir():
+            return None
+
+        if not self._is_saved_dataset_path(path):
+            return None
+
+        dataset = load_from_disk(path.as_posix())
+        if isinstance(dataset, DatasetDict):
+            return dataset
+
+        logger.warning("Ignoring local TinyStories dataset at %s because it does not expose train/validation splits.",
+                       path)
+        return None
+
+    def _resolve_local_data_files(self,
+                                  path : Path,
+                                 ) -> Optional[tuple[str, dict[str, list[str]]]]:
+        """
+        Resolve local TinyStories split files into a load_dataset builder payload.
+        Args:
+            path : Candidate local dataset directory.
+        Returns:
+            Tuple of builder name and data_files mapping, or `None` when no supported layout is found.
+        """
+        if not path.is_dir():
+            return None
+
+        split_files: dict[str, list[Path]] = {}
+        for split_name, aliases in _LOCAL_SPLIT_ALIASES.items():
+            matched_files: list[Path] = []
+            for alias in aliases:
+                split_dir = path / alias
+                for suffix in _LOCAL_FILE_BUILDERS:
+                    direct_file = path / f"{alias}{suffix}"
+                    if direct_file.is_file():
+                        matched_files.append(direct_file)
+                    if split_dir.is_dir():
+                        matched_files.extend(
+                            sorted(file_path for file_path in split_dir.rglob(f"*{suffix}") if file_path.is_file())
+                        )
+
+            unique_files = list(dict.fromkeys(file_path.resolve() for file_path in matched_files))
+            if unique_files:
+                split_files[split_name] = unique_files
+
+        if "train" not in split_files or "validation" not in split_files:
+            return None
+
+        suffixes = {file_path.suffix.lower()
+                    for files in split_files.values()
+                    for file_path in files
+                   }
+        if len(suffixes) != 1:
+            logger.warning("Ignoring local TinyStories dataset at %s because split files use mixed formats: %s",
+                           path,
+                           sorted(suffixes))
+            return None
+
+        suffix = next(iter(suffixes))
+        builder_name = _LOCAL_FILE_BUILDERS.get(suffix)
+        if builder_name is None:
+            logger.warning("Ignoring local TinyStories dataset at %s because %s files are unsupported.",
+                           path,
+                           suffix)
+            return None
+
+        data_files = {split_name: [file_path.as_posix() for file_path in files]
+                      for split_name, files in split_files.items()
+                     }
+        return builder_name, data_files
+
+    def _load_local_dataset(self) -> Optional[DatasetDict]:
+        """
+        Load TinyStories from a supported local source when available.
+        Returns:
+            DatasetDict loaded from disk or local split files, otherwise `None`.
+        """
+        for path in self._candidate_local_paths():
+            dataset = self._load_saved_dataset(path)
+            if dataset is not None:
+                self.source_id = path.as_posix()
+                logger.info("Loading TinyStories dataset from saved dataset at %s", path)
+                return dataset
+
+            resolved_files = self._resolve_local_data_files(path)
+            if resolved_files is None:
+                continue
+
+            builder_name, data_files = resolved_files
+            self.source_id = path.as_posix()
+            logger.info("Loading TinyStories dataset from local %s files at %s", builder_name, path)
+            return load_dataset(builder_name, data_files = data_files)
 
     def load_dataset(self):
-        dataset = load_dataset(self.dataset)
+        dataset = self._load_local_dataset()
+        if dataset is None:
+            self.source_id = self.dataset
+            dataset = load_dataset(self.dataset)
         train_split = dataset["train"]
         val_split = dataset["validation"]
 
@@ -198,18 +384,20 @@ class DataPrep:
     """Prepare TinyStories dataloaders and tokenizer state."""
 
     def __init__(self,
-                 dataset: str = "roneneldan/TinyStories",
-                 block_size: int = 256,
-                 batch_size: int = 32,
-                 shuffle: bool = True,
-                 num_workers: int = 8,
-                 pin_memory: bool = True,
-                 cache_dir: Optional[str] = "data/cache/tinystories",
+                 dataset      : str = "roneneldan/TinyStories",
+                 block_size   : int = 256,
+                 batch_size   : int = 32,
+                 shuffle      : bool = True,
+                 num_workers  : int = 8,
+                 pin_memory   : bool = True,
+                 cache_dir    : Optional[str] = "data/cache/tinystories",
                  tokenizer_name: str = "gpt2",
-                 stride: Optional[int] = None,
-                 use_map: bool = False,
-                 map_num_proc: int = 8,
+                 stride       : Optional[int] = None,
+                 use_map      : bool = False,
+                 map_num_proc : int = 8,
                  map_batch_size: int = 1000,
+                 data_path    : Path | str | None = None,
+                 dataset_root : Path | str | None = None,
                 ) -> None:
         self.dataset = dataset
         self.block_size = block_size
@@ -223,6 +411,8 @@ class DataPrep:
         self.use_map = use_map
         self.map_num_proc = map_num_proc
         self.map_batch_size = map_batch_size
+        self.data_path = Path(data_path).expanduser() if data_path else None
+        self.dataset_root = Path(dataset_root).expanduser() if dataset_root else None
 
         # Backwards-compatible attribute aliases.
         self.blockSize = self.block_size
@@ -232,16 +422,43 @@ class DataPrep:
         self.mapNumProc = self.map_num_proc
         self.mapBatchSize = self.map_batch_size
 
-    def _cache_path(self, split_name: str, tokenizer_name: str) -> Optional[Path]:
+    def _cache_source_id(self) -> str:
+        """
+        Resolve the dataset identifier used when naming token caches.
+        Returns:
+            Source identifier matching the dataset selection logic.
+        """
+        reader = DataRead(dataset      = self.dataset,
+                          data_path    = self.data_path,
+                          dataset_root = self.dataset_root)
+        return reader.resolve_source_id()
+
+    def _cache_path(self,
+                    split_name     : str,
+                    tokenizer_name : str,
+                    dataset_id     : Optional[str] = None,
+                   ) -> Optional[Path]:
+        """
+        Build the on-disk cache path for one tokenized split.
+        Args:
+            split_name     : Dataset split name such as `train` or `validation`.
+            tokenizer_name : Tokenizer name used to create the cache.
+            dataset_id     : Optional explicit dataset identifier from the active reader.
+        Returns:
+            Cache file path, or `None` when caching is disabled.
+        """
         if self.cache_dir is None:
             return None
-        safe_dataset = self.dataset.replace("/", "_")
+        source_id = dataset_id or self._cache_source_id()
+        safe_dataset = source_id.replace(":", "_").replace("\\", "_").replace("/", "_")
         safe_tokenizer = tokenizer_name.replace("/", "_")
         filename = f"{safe_dataset}_{split_name}_{safe_tokenizer}.pt"
         return self.cache_dir / filename
 
     def prep(self):
-        reader = DataRead(dataset=self.dataset)
+        reader = DataRead(dataset      = self.dataset,
+                          data_path    = self.data_path,
+                          dataset_root = self.dataset_root)
         dataset = reader.load_dataset()
 
         train_data = dataset["train"]
@@ -251,8 +468,12 @@ class DataPrep:
             max_tokens=self.block_size,
             tokenizer_name=self.tokenizer_name,
         )
-        train_cache_path = self._cache_path("train", tokenizer.tokenizer_name)
-        val_cache_path = self._cache_path("validation", tokenizer.tokenizer_name)
+        train_cache_path = self._cache_path("train",
+                                            tokenizer.tokenizer_name,
+                                            dataset_id = reader.source_id)
+        val_cache_path = self._cache_path("validation",
+                                          tokenizer.tokenizer_name,
+                                          dataset_id = reader.source_id)
 
         if self.use_map:
             train_tokens = tokenizer.tokenize_split_map(
@@ -299,4 +520,3 @@ class DataPrep:
         train_loader = DataLoader(train_dataset, shuffle=self.shuffle, **loader_kwargs)
         val_loader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
         return train_loader, val_loader, tokenizer
-
